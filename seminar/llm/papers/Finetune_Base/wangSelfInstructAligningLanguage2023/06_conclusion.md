@@ -1,0 +1,4 @@
+# 6 Conclusion
+
+We introduce Self-Instruct, a method to improve the instruction-following ability of LMs via their own generation of instruction data. On experimenting with vanilla GPT3, we automatically construct a large-scale dataset of 52 K instructions for diverse tasks, and finetuning GPT3 on this data leads to a 33\% absolute improvement on SuperNI over the original GPT3. Furthermore, we curate a set of expert-written instructions for novel tasks. Human evaluation on this set shows that tuning GPT3 with Self-Instruct outperforms using existing public instruction datasets by a large margin and performs closely to InstructGPT ${ }_{001}$. We hope Self-Instruct can serve as the first step to align pretrained LMs to follow human instructions, and future work can build on top of this data to improve instruction-following models.
+

@@ -1,0 +1,217 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{beamerthemeImagry}
+
+\RequirePackage{tikz}
+\usetikzlibrary{calc,arrows.meta,angles,quotes}
+\RequirePackage{graphicx}
+\RequirePackage{xcolor}
+\RequirePackage{amssymb}
+\RequirePackage{colortbl}
+\RequirePackage{sidepanel}
+\sidepanelside{right}
+
+\newcommand{\red}[1]{\textcolor{red}{#1}}
+\newcommand{\orange}[1]{\textcolor{orange}{#1}}
+\newcommand{\blue}[1]{\textcolor{blue}{#1}}
+\newcommand{\teal}[1]{\textcolor{teal}{#1}}
+\newcommand{\purple}[1]{\textcolor{purple}{#1}}
+
+% Define Theme Colors
+\definecolor{ImagryOrange}{RGB}{243, 94, 25}
+\definecolor{ImagryPurple}{RGB}{112, 56, 248}
+
+% Widths of the two right-edge bars drawn by the background template below,
+% and of the pair together (contiguous, no gap between them) --- named once
+% here so the resting background and the moving-bar map-return feature further
+% down never drift out of sync with each other.
+\newlength{\imagrypurplewidth}
+\newlength{\imagryorangewidth}
+\newlength{\imagrybargroupwidth}
+\setlength{\imagrypurplewidth}{0.4cm}
+\setlength{\imagryorangewidth}{0.2cm}
+\setlength{\imagrybargroupwidth}{\imagrypurplewidth}
+\addtolength{\imagrybargroupwidth}{\imagryorangewidth}
+\setlength{\sidepanelbarwidth}{\imagrybargroupwidth}
+
+% Map-return panel highlight rings (see sidepanel.sty's \sidepanelhighlight)
+% use the same purple/orange pair as the bars.
+\colorlet{sidepanelhighlightcolor1}{ImagryPurple}
+\colorlet{sidepanelhighlightcolor2}{ImagryOrange}
+
+% Match the reproduced title/body's left inset to this theme's own text
+% margin (set below), so it lines up with the real slide's left edge.
+\setlength{\sidepanelbodymargin}{1.2cm}
+% Empirically measured (rendering a real frame and its map-return
+% reproduction to PNG at matching resolution and diffing the title's pixel
+% row): without this, a title re-invoked stand-alone at the top of a
+% map-return frame renders too high relative to a real frame's title,
+% since beamer's own frame machinery inserts a vertical gap above
+% \frametitle that isn't present when the same template is instead called
+% by hand at the top of a plain minipage (see sidepanel.sty's
+% \sidepanelreproduce for the full explanation of why this can't be
+% derived exactly and has to be tuned per theme).
+\setlength{\sidepaneltitletopskip}{0.52cm}
+
+% Remove default navigation symbols
+\setbeamertemplate{navigation symbols}{}
+
+% Side margins
+\setbeamersize{text margin left=1.2cm, text margin right=1.2cm}
+
+% Define the Background Template
+\setbeamertemplate{background}{
+  \begin{tikzpicture}[remember picture,overlay]
+    \ifnum\c@framenumber=1
+      % Title Slide Background (Uses your provided image)
+      \node[at=(current page.center), anchor=center, inner sep=0pt] {
+        \includegraphics[width=\paperwidth,height=\paperheight]{ImagryTitleFrame.jpg}
+      };
+    \else
+      % Regular Slide Background (Vector recreation of Slide 5)
+      % Top Left Orange Bracket
+      \fill[ImagryOrange] (current page.north west) ++(0.5,-0.5) rectangle ++(2,-0.4);
+      \fill[ImagryOrange] (current page.north west) ++(0.5,-0.5) rectangle ++(0.4,-2);
+
+      % Right Border Bars -- (sidepanelbaranchor) is the north-west corner
+      % of the bar group, resting at the page edge or shifted left during a
+      % map-return frame; orange sits at its inner (left) edge, purple at
+      % its outer (right) edge, in both cases.
+      \sidepanelmarkbaranchor
+      \fill[ImagryOrange] (sidepanelbaranchor) rectangle ++(\imagryorangewidth,-\paperheight);
+      \fill[ImagryPurple] (sidepanelbaranchor) ++(\imagryorangewidth,0) rectangle ++(\imagrypurplewidth,-\paperheight);
+    \fi
+  \end{tikzpicture}
+}
+
+% Define the Footer (Only on regular slides)
+% Suppressed during a map-return frame (\ifsidepanelactive): this frame's
+% own logo/copyright/page number belong to the reproduced/dimmed previous
+% slide's look, not to the current, real page -- showing them here would be
+% misleading chrome that isn't part of either slide's true content.
+\setbeamertemplate{footline}{
+  \ifsidepanelactive\else
+  \ifnum\c@framenumber>1
+    \begin{tikzpicture}[remember picture,overlay]
+      % Logo (Bottom Left)
+      \node[anchor=south west, xshift=0.5cm, yshift=0.15cm] at (current page.south west) {
+        \includegraphics[height=0.5cm]{imagry-logo.png}
+      };
+      % Copyright (Bottom Center)
+      \node[anchor=south, yshift=0.3cm] at (current page.south) {
+        \tiny \textcolor{ImagryOrange}{\copyright{} 2026 Imagry, All Rights Reserved}
+      };
+      % Dynamic Slide Number (Bottom Right)
+      \node[anchor=south east, yshift=0.3cm, xshift=-1cm] at (current page.south east) {
+        \textcolor{ImagryOrange}{|\ \insertframenumber}
+      };
+    \end{tikzpicture}
+  \fi
+  \fi
+}
+
+% Frame title: centered, slightly larger
+\setbeamertemplate{frametitle}{
+  \vspace{0.9cm}
+  \begin{center}
+    \textbf{\fontsize{17}{20}\selectfont\insertframetitle}
+  \end{center}
+  \vspace{-0.7cm}
+}
+
+% Define Title Page Formatting
+\setbeamertemplate{title page}{
+  \vspace{2cm}
+  \begin{center}
+  \begin{minipage}{\dimexpr\textwidth-2cm\relax}
+  \centering
+    \textcolor{white}{\LARGE \textbf{\inserttitle}}\par
+    \vspace{0.3cm}
+    \textcolor{white}{\large \insertsubtitle}\par
+    \vspace{0.5cm}
+    \textcolor{white}{\large \insertauthor}\par
+    \vspace{0.5cm}
+    \textcolor{white}{\small \insertdate}
+  \end{minipage}
+  \end{center}
+}
+
+% ===========================================================================
+%  MAP-RETURN FEATURE
+% ===========================================================================
+%
+% Mirror image of beamerthemeAtlas.sty's own map-return feature: Atlas has
+% one gradient spine resting at the LEFT edge that slides RIGHT into a map
+% panel; Imagry has its two flat right-edge bars (orange+purple, drawn by
+% the background template above) rest at the RIGHT edge and slide LEFT
+% together into a map panel on the right, leaving a dimmed sliver of the
+% previous slide on the LEFT. The actual mechanism is shared with Atlas via
+% sidepanel.sty (see that file for the full rationale). Everything below is
+% a thin, Imagry-named wrapper over the generic \sidepanel... macros, kept
+% so decks can write \imagrySomething instead of \sidepanelSomething.
+%
+% \imagrymapframe[coverage]{map title}{map content}{title}{\boxreg}{anchorname}
+%   coverage : fraction (0-1) of the page width the map panel takes up on
+%              the right, default 0.8 (i.e. the bars move to 20% from the
+%              left edge). Configurable per slide, e.g. \imagrymapframe[0.5]{...}
+%   map title   : optional small caption above the map content (leave empty
+%              {} for none)
+%   map content : what to draw in the white panel right of the bars —
+%              typically \includegraphics[width=\imagrypanelinnerwidth]{map.png}
+%              with \imagryhighlight{<x>}{<y>}{<r>} calls layered on top.
+%   title, \boxreg, anchorname : the exact same title, box register and
+%              anchor name passed to \imagryslide (or \imagryrecordslide)
+%              for the real slide being revisited.
+%
+% \imagrypanelinnerwidth is made available inside the map content for
+% sizing (e.g. \includegraphics[width=\imagrypanelinnerwidth]{map.png}).
+\let\imagrypanelinnerwidth\sidepanelpanelinnerwidth
+
+% \imagryrecordslide{\boxreg}{anchorname}{body}
+%   Goes INSIDE the real \begin{frame}{...}...\end{frame} in place of the
+%   \global\sbox{...}{...} + tikzpicture pair. \boxreg must already exist via
+%   \newsavebox{\boxreg} (do that once, outside the frame).
+\newcommand{\imagryrecordslide}[3]{\sidepanelrecordslide{#1}{#2}{#3}}
+
+% \imagryslide{title}{\boxreg}{anchorname}{body}
+%   Full replacement for \begin{frame}{title}...\end{frame} when that slide
+%   will later be revisited via \imagrymapreturn: opens the frame, typesets
+%   the title, and records the body in one call. \boxreg must already
+%   exist via \newsavebox{\boxreg}.
+\newcommand{\imagryslide}[4]{\sidepanelslide{#1}{#2}{#3}{#4}}
+
+\newcommand{\imagrymapframe}[6][0.8]{\sidepanelmapframe[#1]{#2}{#3}{#4}{#5}{#6}}
+
+% \imagrymapreturn is kept as a plain alias of \imagrymapframe: both names
+% are provided so either verb reads naturally at a call site. The title/
+% box/anchor triple must be the exact same names passed to \imagryslide for
+% that slide -- see sidepanel.sty's \sidepanelreproduce for why the title
+% has to be repeated here rather than recovered automatically.
+\newcommand{\imagrymapreturn}[6][0.8]{\sidepanelmapframe[#1]{#2}{#3}{#4}{#5}{#6}}
+
+% \imagryhighlight{x}{y}{radius} — draw a highlight ring at coordinate (x,y)
+% (in cm, relative to the current picture's own origin), for marking
+% "you are here" on the map graphic. Use inside a tikzpicture that itself
+% sits inside the map content, e.g.:
+%   \begin{tikzpicture}
+%     \node[anchor=north west, inner sep=0pt]{\includegraphics[width=\imagrypanelinnerwidth]{map.png}};
+%     \imagryhighlight{3.2}{-1.4}{0.6}
+%   \end{tikzpicture}
+\newcommand{\imagryhighlight}[3]{\sidepanelhighlight{#1}{#2}{#3}}
+
+% \imagrymapcover{x1}{y1}{x2}{y2} — draw an opaque white rectangle over the
+% map content to hide a region of it (same coordinate system as
+% \imagryhighlight: cm, relative to the enclosing tikzpicture's own origin).
+% Use this to progressively reveal a single master diagram across several
+% \imagrymapreturn frames instead of exporting a separate image per stage.
+% Draw it AFTER the \includegraphics call in the same tikzpicture so it
+% paints on top. Only suits a directional reveal (a curtain sliding in one
+% direction) — for disconnected regions out of spatial order, use several
+% \imagrymapcover calls rather than a single moving edge.
+\newcommand{\imagrymapcover}[4]{\sidepanelmapcover{#1}{#2}{#3}{#4}}
+
+% \imagrymapcoverbelow{y} / \imagrymapcoverabove{y} — convenience wrappers
+% over \imagrymapcover for a horizontal curtain: hide everything below/above
+% height y. See sidepanel.sty for why these hug \imagrypanelinnerwidth
+% rather than an arbitrary huge constant.
+\newcommand{\imagrymapcoverbelow}[1]{\sidepanelmapcoverbelow{#1}}
+\newcommand{\imagrymapcoverabove}[1]{\sidepanelmapcoverabove{#1}}

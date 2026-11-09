@@ -1,0 +1,4 @@
+# Ethical Considerations
+
+This work uses language models, for which the risks and potential harms are discussed in Bender \& Koller (2020), Brown et al. (2020), Bender et al. (2021), Patterson et al., (2021), and others. As our contribution in this paper is not a pretrained language model itself but rather an empirical study of how instruction tuning affects the zero-shot performance of a language model on unseen tasks, we additionally highlight two relevant ethical considerations. First, labeled datasets such as those we use for finetuning can contain undesirable biases, and these biases can be propagated into zero-shot applications of the model on downstream tasks. And second, instruction-tuned models can potentially require less data and expertise to use; such lower barriers to access could increase both the benefits and associated risks of such models.
+

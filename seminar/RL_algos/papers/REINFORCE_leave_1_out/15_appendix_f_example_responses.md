@@ -1,0 +1,29 @@
+# F Example Responses
+F. 1 TL;DR Summarize (Pythia)
+
+Prompt: Below is a reddit POST and the corresponding SUBREDDIT and TITLE. Write a both precise and concise summary of the contents of the post.
+SUBREDDIT:r/loseit
+TITLE:Caffeine addiction.
+I have a horrible caffeine addiction, and I don't like sacrificing any of my daily calories for coffee. I used to drink 5-6 Diet Dr. Peppers a day, but I have switched to almost exclusively drinking only water most days. I do have a Diet Dr. Pepper occasionally, and I know that technically it's okay to probably have one a day, but I honestly just feel better all around when I drink only water. But if I don't have some caffeine in the morning, I will be writhing in the floor in pain with a skull-pounding headache by mid-day. I know. Ridiculous, right?
+So, I went to the vitamin aisle the other day in search of a supplement with a little caffeine and the only thing I found was One A Day Adult Vitacraves Gummies with Energy Support. Here's the website with [nutritional info] One serving is 20 calories and has 90 mg of caffeine. There's also some vitamin B6, B12, and folic acid in there that supposedly helps turn food into energy. I have no idea if that's true. I've been taking them a couple days, and so far I do feel more energized and I haven't had any headaches. The issue is that one bottle is around \$9 and there are only 60 in a bottle. You have to take 4 (4!) a day, which is very intriguing considering the brand name and all. So it'll cost me around \$20 a month. Which is admittedly cheaper than what I used to spend on Diet Dr. Peppers, but still. I was just curious if anyone else had a better option for caffeine in a supplement or vitamin?,
+
+RLOO (k=4): "I have a horrible caffeine addiction. Went to the vitamin aisle and only found One A Day Adult Vitacraves Gummies with Energy Support. Cost $\$ 9 /$ bottle and contains 90 mg of caffeine. Anyone else have a better option for caffeine in a supplement or vitamin?"
+RLOO (K=2): "I have a horrible caffeine addiction. I switched to exclusively drinking only water most days. I went to the vitamin aisle and only found one brand of supplement with caffeine. It costs \$9 a bottle. Anyone else have a better option for caffeine in a supplement or vitamin?"
+REINFORCE w/ B.: "I have a horrible caffeine addiction. I don't like sacrificing any of my daily calories for coffee. I went to the vitamin aisle and only found a supplement with 90 mg of caffeine. Is there a better option for caffeine in a supplement or vitamin?",
+RAFT (K=4): "I have a horrible caffeine addiction. Went to the vitamin aisle and only found One A Day Adult Vitacraves Gummies with Energy Support. Cost $\$ 9$ a bottle and have 90 mg of caffeine. Anyone else have a better option for caffeine in a supplement or vitamin?"
+RAFT ( $\mathbf{K}=\mathbf{2}$ ) "I have a horrible caffeine addiction. I switched to only drinking only water most days. Found One A Day Adult Vitacraves Gummies with Energy Support. Cost \$9 a bottle. Anyone else have a better option for caffeine in a supplement or vitamin?"
+PPO: "I have a horrible caffeine addiction. Went to the vitamin aisle in search of a supplement with caffeine but only found One A Day Adult Vitacraves Gummies with Energy Support. Cost around \$20 a month. Any better options? "
+Vanilla PG: "I have a horrible caffeine addiction and was looking for a supplement or vitamin with caffeine. Only found One A Day Adult Vitacraves Gummies with Energy Support which costs $\$ 9$ per bottle. Any better options for caffeine in a supplement or vitamin?",
+DPO: "I have a horrible caffeine addiction. I like only drinking water most days, but occasionally I want some caffeine. I found some caffeine in a supplement in the vitamin aisle, but it's expensive and I was just wondering if anyone else has a better option."
+F. 2 HH (Llama)
+
+Prompt:: "Human: Why does it hurt when I stretch too hard?Assistant:"
+
+RLOO (k=4): "Stretching too hard can cause muscle soreness or injury. This is due to a combination of muscle strain and inflammation. It's important to stretch gradually, and to listen to your body, so you don't overdo it."
+RLOO ( $\mathbf{K}=\mathbf{2}$ ): "Stretching too hard can cause muscle pain or muscle soreness. This is usually temporary, and will go away as your muscles get used to the stretch. It's important to start with a light stretch, and gradually increase the stretch as your muscles get used to it."
+REINFORCE w/ B.: "When you stretch too hard, you can cause minor muscle strain. It2019s usually not a big deal, but it can cause some discomfort. It2ૅ019s also a sign that you might be overdoing it, so it can be a warning sign."
+RAFT ( $\mathbf{K}=\mathbf{4}$ ): "Stretching too hard can cause muscle strain. This is especially true for muscles that aren2019t used to stretching, or for muscles that are already fatigued. It2019s also possible to injure a muscle if you stretch it too far, but this is less common."
+RAFT ( $\mathbf{K}=\mathbf{2}$ ): "When you stretch too hard, you can cause a minor muscle tear or strain."
+PPO: "Stretching too hard can cause muscle soreness or injury."
+Vanilla PG: "Stretching too hard can cause muscle soreness and pain. This is because you are overstretching the muscle, which can cause damage to the muscle fibers. It is best to stretch gradually and gently, to avoid injury."
+DPO : "Stretching can be uncomfortable if you do it too aggressively, because it can cause minor muscle soreness or even minor injury. When you stretch, you are putting stress on your muscles and connective tissue, and this stress can sometimes cause minor damage or injury. If you stretch too aggressively or for too long, you can cause minor muscle soreness or even minor injury. This can cause pain or discomfort during or after the stretching. It can also cause minor damage to your connective tissue, which can cause pain or discomfort after the stretch."

@@ -1,0 +1,386 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{sidepanel}
+
+% ---------------------------------------------------------------------------
+% sidepanel: the "map-return" mechanic shared by any beamer theme that has an
+% edge spine which can widen into a side panel holding a diagram, while the
+% rest of the slide shows the previous slide's title+body cropped to a
+% sliver and dimmed underneath it. A theme adopting this package keeps all
+% of its own colors/fonts/spine-painting code; this file only owns the
+% geometry (coverage -> line position -> panel width, mirrored for a left-
+% or right-resting spine) and the frame mechanics (recording a real slide's
+% title+body once, as it's really typeset, so it can be reproduced later,
+% cropped and dimmed, pixel-identical to the original).
+%
+% A theme adopting this package must, once, at load time:
+%   \RequirePackage{sidepanel}
+%   \sidepanelside{left}                        % or {right}
+%   \setlength{\sidepanelbarwidth}{...}         % total resting spine width
+% and, inside its OWN \setbeamertemplate{background}, replace whatever
+% hard-coded page-corner anchor it draws its spine rectangle(s) from with
+% \sidepanelbaranchor (see below). Nothing else in the theme (frametitle,
+% footline, title page) needs to change: a map-return frame is a normal,
+% non-[plain] frame, so the theme's real background/footline paint
+% automatically underneath the reproduced/dimmed content, and the spine
+% simply reads as already-shifted because the theme's own background
+% template consults \sidepanelbaranchor instead of a fixed corner.
+% ---------------------------------------------------------------------------
+
+\RequirePackage{tikz}
+\usetikzlibrary{calc}
+\RequirePackage{xcolor}
+
+% ---- Side selection & map-mode state ----
+% \ifsidepanelleft is set once, at theme load time, via \sidepanelside.
+% \ifsidepanelactive is true only for the duration of a map-return frame
+% (\sidepanelmapframe below) -- it's what lets the theme's own background
+% template know to shift the spine via \sidepanelbaranchor.
+\newif\ifsidepanelleft
+\newif\ifsidepanelactive
+
+\makeatletter
+\newcommand{\sidepanelside}[1]{%
+  \def\sidepanel@arg{#1}%
+  \def\sidepanel@leftword{left}%
+  \ifx\sidepanel@arg\sidepanel@leftword
+    \sidepanellefttrue
+  \else
+    \sidepanelleftfalse
+  \fi
+}
+\makeatother
+
+% ---- Lengths ----
+% \sidepanelbarwidth: total resting spine width, set by the theme itself
+% (a single gradient bar, or several flat-colored bars side by side --
+% this file never assumes which; see \sidepanelbaranchor's contract below).
+\newlength{\sidepanelbarwidth}
+% \sidepanelbodymargin: left inset of the reproduced title/body from the
+% panel-side page edge -- also used as the left inset of the panel's own
+% content. Replaces the magic 1.1cm/1.2cm literals both original themes
+% hard-coded independently for the same purpose.
+\newlength{\sidepanelbodymargin}
+\setlength{\sidepanelbodymargin}{1.1cm}
+% \sidepanelpanelmargin: total horizontal margin subtracted from the
+% available line position to get the panel's own usable inner width
+% (left inset + a right-hand gap before the spine/line). Independently
+% overridable from \sidepanelbodymargin even though the default here
+% happens to equal \sidepanelbodymargin + 1cm.
+\newlength{\sidepanelpanelmargin}
+\setlength{\sidepanelpanelmargin}{2.1cm}
+% \sidepaneltopoffset: vertical inset of the panel's own title/content from
+% the top of the page, chosen to roughly align with where a real frame's
+% body starts under its frametitle.
+\newlength{\sidepaneltopoffset}
+\setlength{\sidepaneltopoffset}{0.55cm}
+
+% Per-frame lengths, (re)computed inside \sidepanelmapframe every time it's
+% called -- exposed so map content (diagrams, \sidepanelhighlight calls,
+% \sidepanelmapcover* calls) can size itself against the actual panel width.
+\newlength{\sidepanellinepos}
+\newlength{\sidepanelpanelinnerwidth}
+% Width of the original slide's own text column, used when reproducing its
+% title -- always \textwidth, but named so it reads clearly at the call site.
+\newlength{\sidepanelrestinnerwidth}
+
+% \sidepaneltitletopskip: vertical correction applied when reproducing a
+% slide's TITLE (not its body -- see \sidepanelreproduce below for why the
+% title, unlike the body, can't just be placed at a remembered real-frame
+% anchor). Default 0pt; a theme whose frametitle template doesn't happen to
+% line up when re-invoked stand-alone at the top of the map-return frame
+% (e.g. because it's centered, or has unusual vspace) should \setlength
+% this once, empirically, against its own rendering.
+\newlength{\sidepaneltitletopskip}
+\setlength{\sidepaneltitletopskip}{0pt}
+
+% ---- Themeable colors / opacity ----
+\providecolor{sidepaneltextcolor}{RGB}{0, 0, 0}
+\providecolor{sidepanelhighlightcolor1}{RGB}{0, 0, 0}
+\providecolor{sidepanelhighlightcolor2}{RGB}{128, 128, 128}
+% Opacity of the white veil drawn over the dimmed, cropped original slide
+% (0 = no dimming, 1 = fully hidden). This is the single override point for
+% all themes using this package -- there is no per-theme alias.
+\newcommand{\sidepaneldimopacity}{0.72}
+
+% \sidepanelnormalpar -- restores plain-LaTeX paragraph-breaking parameters.
+% The root cause: \begin{minipage} (needed here to give the reproduction a
+% fixed width) always runs LaTeX kernel's \@arrayparboxrestore, which calls
+% \sloppy (\tolerance 9999, \emergencystretch 3em) and resets \rightskip AND
+% \@rightskip to a plain 0pt -- unconditionally, every time. A real frame
+% body never goes through a minipage, so it keeps LaTeX's normal
+% \tolerance=200/no-emergencystretch, and its ambient \rightskip is
+% 0pt plus1fil (beamer's usual near-ragged body setting). \@rightskip has
+% to be reset too, not just \rightskip: an \begin{itemize} inside the
+% reproduced body re-derives \rightskip from \@rightskip on its own, which
+% would otherwise silently revert this back to \sloppy's plain 0pt. Call
+% this right after \begin{minipage} and before the body content, so its
+% line breaks match the real frame's.
+\makeatletter
+\newcommand{\sidepanelnormalpar}{%
+  \tolerance=200\relax
+  \pretolerance=100\relax
+  \emergencystretch=0pt\relax
+  \rightskip=0pt plus1fil\relax
+  \@rightskip=0pt plus1fil\relax
+}
+\makeatother
+
+% ---- Coordinate helpers ----
+%
+% These materialize NAMED tikz coordinates via a full \coordinate statement
+% (rather than expanding to a bare coordinate expression referenced inline)
+% specifically so the \ifsidepanelactive/\ifsidepanelleft branching is
+% resolved by TeX itself, once, while reading that statement -- not by
+% pgf's own path parser, which inspects upcoming tokens without reliably
+% forcing a conditional hidden inside a macro used mid-path to resolve
+% first. Call the "mark" macro once near the top of an open tikzpicture,
+% then refer to the coordinate it defines by name in any later path.
+%
+% \sidepanelmarkbaranchor -- defines coordinate (sidepanelbaranchor) at the
+% north-west corner of the spine's bar-group rectangle, resting or shifted.
+% This is the ONLY hook a theme's own background template needs: it keeps
+% its own bar-painting code (a single \shade, several \fill calls for a
+% multi-color spine, whatever), just anchored at (sidepanelbaranchor)
+% instead of a fixed page corner.
+\newcommand{\sidepanelmarkbaranchor}{%
+  \ifsidepanelactive
+    \coordinate (sidepanelbaranchor) at ($(current page.north west)+(\sidepanellinepos,0)$);%
+  \else
+    \ifsidepanelleft
+      \coordinate (sidepanelbaranchor) at (current page.north west);%
+    \else
+      \coordinate (sidepanelbaranchor) at ($(current page.north east)+(-\sidepanelbarwidth,0)$);%
+    \fi
+  \fi
+}
+% Panel/sliver rectangle corners and panel content anchor -- internal to
+% \sidepanelmapframe below, defined the same way for the same reason.
+\makeatletter
+\newcommand{\sidepanel@markgeometry}{%
+  \ifsidepanelleft
+    \coordinate (sidepanel@sliverA) at ($(current page.north west)+(\sidepanellinepos+\sidepanelbarwidth,0)$);%
+    \coordinate (sidepanel@sliverB) at (current page.south east);%
+    \coordinate (sidepanel@panelA) at (current page.north west);%
+    \coordinate (sidepanel@panelB) at ($(current page.north west)+(\sidepanellinepos,-\paperheight)$);%
+    \coordinate (sidepanel@panelanchor) at ($(current page.north west)+(\sidepanelbodymargin,-\sidepaneltopoffset)$);%
+  \else
+    \coordinate (sidepanel@sliverA) at (current page.north west);%
+    \coordinate (sidepanel@sliverB) at ($(current page.north west)+(\sidepanellinepos,-\paperheight)$);%
+    \coordinate (sidepanel@panelA) at ($(current page.north west)+(\sidepanellinepos+\sidepanelbarwidth,0)$);%
+    \coordinate (sidepanel@panelB) at (current page.south east);%
+    \coordinate (sidepanel@panelanchor) at ($(current page.north west)+(\sidepanellinepos+\sidepanelbarwidth+\sidepanelbodymargin,-\sidepaneltopoffset)$);%
+  \fi
+}
+
+% \sidepanelrecordslide{\boxreg}{anchorname}{body} -- goes INSIDE a real
+% \begin{frame}{title}...\end{frame} IN PLACE OF the body, so this call's
+% own \node is what actually displays the body on the real slide: recording
+% is a side effect of the very same typesetting that makes the slide's real
+% content, not a separate pass, so there's no way for the two to drift
+% apart. Deliberately does NOT also capture the title: the frame's real
+% title is already showing, separately, via beamer's own automatic
+% \begin{frame}{title} machinery -- capturing it into this same displayed
+% box would print it a second time, on the real slide, as ordinary body
+% text. (\boxreg must already exist via \newsavebox{\boxreg}, done once,
+% outside the frame. \sbox needs \global because \begin{frame}...\end{frame}
+% is itself a group, so a non-global \sbox's assignment would vanish at
+% \end{frame}.)
+\newcommand{\sidepanelrecordslide}[3]{%
+  \global\sbox{#1}{\begin{minipage}[t]{\textwidth}\sidepanelnormalpar#3\end{minipage}}%
+  \begin{tikzpicture}[remember picture]
+    \node[anchor=north west, inner sep=0pt] (#2) {\usebox{#1}};
+  \end{tikzpicture}%
+}
+
+% \sidepanelslide{title}{\boxreg}{anchorname}{body} -- full replacement for
+% \begin{frame}{title}...\end{frame} when that slide will later be revisited
+% via \sidepanelmapframe. \boxreg must already exist via \newsavebox{\boxreg}.
+\newcommand{\sidepanelslide}[4]{%
+  \begin{frame}{#1}
+    \sidepanelrecordslide{#2}{#3}{#4}
+  \end{frame}%
+}
+
+% \sidepanelreproduce{title}{\boxreg}{anchorname} -- reproduces a recorded
+% slide's title+body inside a map-return frame. The two are placed by two
+% different mechanisms, for two different reasons:
+%
+%   BODY: placed at the remembered anchor left by \sidepanelrecordslide,
+%   guaranteeing pixel-identical position -- no placement math needed,
+%   since it's the exact page coordinate where the real frame's body
+%   already sits.
+%
+%   TITLE: re-typeset fresh here via the theme's own frametitle template,
+%   since capturing it once at record time (see \sidepanelrecordslide
+%   above) isn't an option without printing it twice on the real slide.
+%   This can't just reuse the body's own remembered-anchor trick either:
+%   beamer's default frame layout centers content using FLEXIBLE glue
+%   above/below it, so the title's resolved position depends on the real
+%   frame's total content height -- a quantity this reproduction (title +
+%   a zero-footprint overlay node for the body) doesn't share with the
+%   real frame (title + real, non-zero body), so there's no way to derive
+%   its exact position from first principles. \sidepaneltitletopskip is
+%   the one knob a theme can tune, empirically, if its own frametitle
+%   template doesn't already land in a visually acceptable spot when
+%   re-invoked stand-alone this way (Atlas doesn't need it; a theme with a
+%   centered or unusually spaced title, like Imagry, likely will).
+%
+% Only valid called from inside an already-open [remember picture,
+% overlay] tikzpicture (as \sidepanelmapframe does below) -- it
+% deliberately does not open its own picture, since it's always used as
+% one drawing command among several others in the same picture, not as
+% standalone inline content.
+\newcommand{\sidepanelreproduce}[3]{%
+  \node[anchor=north west, inner sep=0pt] at ($(current page.north west)+(0,-\sidepaneltitletopskip)$) {%
+    \hspace*{\sidepanelbodymargin}%
+    \begin{minipage}[t]{\sidepanelrestinnerwidth}
+      \sidepanelnormalpar
+      \def\insertframetitle{#1}%
+      \usebeamertemplate*{frametitle}%
+    \end{minipage}%
+  };
+  \node[anchor=north west, inner sep=0pt] at (#3.north west) {\normalfont\normalsize\usebox{#2}};
+}
+
+% \sidepanelmapframe[coverage]{map title}{map content}{\boxreg}{anchorname}
+%
+%   coverage    : fraction (0-1) of the page width the panel takes up,
+%                 default 0.8. Configurable per slide, e.g.
+%                 \sidepanelmapframe[0.55]{...}
+%   map title   : optional small caption above the map content, on white
+%                 (leave empty {} for none)
+%   map content : what to draw in the panel -- typically
+%                 \includegraphics[width=\sidepanelpanelinnerwidth]{map.png}
+%                 with \sidepanelhighlight{<x>}{<y>}{<r>} calls layered on
+%                 top to ring whichever region of the map is relevant now.
+%   title       : the EXACT title of the slide being revisited (see
+%                 \sidepanelreproduce above for why this has to be passed
+%                 again here rather than recovered automatically).
+%   \boxreg, anchorname : the exact same box register and anchor name
+%                 passed to \sidepanelslide (or \sidepanelrecordslide) for
+%                 the real slide being revisited.
+%
+% Unlike the [plain]-frame approach this replaces, this is a NORMAL frame:
+% the theme's own (unmodified) background/footline templates fire exactly
+% as they would on any other slide, painting the shifted spine (via
+% \sidepanelbaranchor, since \ifsidepanelactive is now true) and all of the
+% theme's other fixed chrome (logo, page number, decorative marks, whatever
+% a given theme has) at their usual positions -- nothing is hand-redrawn
+% here. The dimming veil below is simply an extra translucent layer painted
+% on top of whatever the real templates already put there, which is exactly
+% what dims that chrome too, incidentally and for free, without this file
+% (or the theme) needing to know what that chrome even is.
+\newcommand{\sidepanelmapframe}[6][0.8]{%
+  \ifsidepanelleft
+    \pgfmathsetlength{\sidepanellinepos}{#1\paperwidth}%
+    \pgfmathsetlength{\sidepanelpanelinnerwidth}{\sidepanellinepos-\sidepanelpanelmargin}%
+  \else
+    \pgfmathsetlength{\sidepanellinepos}{(1-#1)*\paperwidth}%
+    \pgfmathsetlength{\sidepanelpanelinnerwidth}{\paperwidth-\sidepanellinepos-\sidepanelbarwidth-\sidepanelpanelmargin}%
+  \fi
+  \sidepanelrestinnerwidth=\textwidth\relax
+  \global\sidepanelactivetrue
+  \begin{frame}
+    \begin{tikzpicture}[remember picture, overlay]
+      \sidepanel@markgeometry
+      % The original slide's title+body, cropped to the sliver and dimmed.
+      \begin{scope}
+        \clip (sidepanel@sliverA) rectangle (sidepanel@sliverB);
+        \sidepanelreproduce{#4}{#5}{#6}%
+        \fill[white, opacity=\sidepaneldimopacity]
+          (current page.north west) rectangle (current page.south east);
+      \end{scope}
+      % The panel: opaque white regardless of whatever chrome the real
+      % background/footline may have painted under it (e.g. a page number
+      % that would otherwise land near a page corner inside the panel).
+      \fill[white] (sidepanel@panelA) rectangle (sidepanel@panelB);
+      \node[anchor=north west, inner sep=0pt, text width=\sidepanelpanelinnerwidth,
+            text=sidepaneltextcolor] at (sidepanel@panelanchor) {%
+        \ifx\\#2\\\else{\bfseries\large\color{sidepanelhighlightcolor1}#2\par\vspace{0.25cm}}\fi
+        #3%
+      };
+    \end{tikzpicture}
+  \end{frame}%
+  \global\sidepanelactivefalse
+}
+\makeatother
+
+% \sidepanelhighlight{x}{y}{radius} -- draw a highlight ring at coordinate
+% (x,y) (in cm, relative to the current picture's own origin), for marking
+% "you are here" on the map graphic. Use inside a tikzpicture that itself
+% sits inside the map content, e.g.:
+%   \begin{tikzpicture}
+%     \node[anchor=north west, inner sep=0pt]{\includegraphics[width=\sidepanelpanelinnerwidth]{map.png}};
+%     \sidepanelhighlight{3.2}{-1.4}{0.6}
+%   \end{tikzpicture}
+\newcommand{\sidepanelhighlight}[3]{%
+  \draw[sidepanelhighlightcolor1, line width=1.4pt] (#1,#2) circle (#3);
+  \draw[sidepanelhighlightcolor2, line width=3pt, opacity=0.6] (#1,#2) circle (#3);
+}
+
+% \sidepanelmapcover{x1}{y1}{x2}{y2} -- draw an opaque white rectangle over
+% the map content to hide a region of it (same coordinate system as
+% \sidepanelhighlight: cm, relative to the enclosing tikzpicture's own
+% origin). Use this to progressively reveal a single master diagram across
+% several \sidepanelmapframe calls instead of exporting a separate image
+% per stage: keep the diagram's components laid out in the intended reveal
+% order, then shrink the covered rectangle slide by slide. Draw it AFTER
+% the \includegraphics call in the same tikzpicture so it paints on top.
+%
+% Only suits a directional reveal (a curtain sliding down/up/left/right) --
+% for disconnected regions out of spatial order, use several
+% \sidepanelmapcover calls (one per region to hide) rather than a single
+% moving edge.
+\newcommand{\sidepanelmapcover}[4]{%
+  \fill[white] (#1,#2) rectangle (#3,#4);
+}
+
+% \sidepanelmapcoverbelow{y} / \sidepanelmapcoverabove{y} /
+% \sidepanelmapcoverleft{x} / \sidepanelmapcoverright{x} -- convenience
+% wrappers over \sidepanelmapcover for the common case of a directional
+% curtain: hide everything below/above/left/right of a given coordinate.
+%
+% Horizontally these hug \sidepanelpanelinnerwidth EXACTLY (0 to
+% \sidepanelpanelinnerwidth, no overhang margin on either side) rather than
+% a wider "safety margin": the covering rectangle is drawn inside the SAME
+% (non-overlay) tikzpicture as the map image, which is inserted as content
+% of a node inside the OUTER overlay picture -- any horizontal overhang here
+% widens that inner picture's own bounding box, which can bleed sideways far
+% enough (once combined with enough vertical extent) to visibly interfere
+% with the spine on whichever side sits adjacent to the panel (the right
+% edge for a left-resting spine, the left edge for a right-resting one).
+% Vertically, keep this call's own y no more than a few cm past the actual
+% image height -- there is no need for, and no safe amount of, extra headroom
+% beyond the image's real extent. Same principle applies horizontally for
+% left/right covers.
+\newcommand{\sidepanelmapcoverbelow}[1]{\sidepanelmapcover{0cm}{-50cm}{\sidepanelpanelinnerwidth}{#1}}
+\newcommand{\sidepanelmapcoverabove}[1]{\sidepanelmapcover{0cm}{#1}{\sidepanelpanelinnerwidth}{50cm}}
+\newcommand{\sidepanelmapcoverleft}[1]{\sidepanelmapcover{-50cm}{-50cm}{#1}{50cm}}
+\newcommand{\sidepanelmapcoverright}[1]{\sidepanelmapcover{#1}{-50cm}{\sidepanelpanelinnerwidth}{50cm}}
+
+% \sidepanelmapcovercorner{corner}{width}{height} -- convenience wrapper to
+% cover a corner region. Corner is one of: TL (top-left), TR (top-right),
+% BL (bottom-left), BR (bottom-right). Width and height are dimensions from
+% the corner edge (e.g., {3cm}{2cm} covers 3cm from left and 2cm from top
+% for TL corner). Uses the same boundary-respecting coordinate system.
+\makeatletter
+\newcommand{\sidepanelmapcovercorner}[3]{%
+  \def\corner@arg{#1}%
+  \def\corner@TL{TL}\def\corner@TR{TR}\def\corner@BL{BL}\def\corner@BR{BR}%
+  \ifx\corner@arg\corner@TL
+    % Top-left: from (0,50cm) to (width,50cm-height)
+    \sidepanelmapcover{0cm}{50cm}{#2}{\dimexpr50cm-#3\relax}%
+  \else\ifx\corner@arg\corner@TR
+    % Top-right: from (innerwidth-width,50cm) to (innerwidth,50cm-height)
+    \sidepanelmapcover{\dimexpr\sidepanelpanelinnerwidth-#2\relax}{50cm}{\sidepanelpanelinnerwidth}{\dimexpr50cm-#3\relax}%
+  \else\ifx\corner@arg\corner@BL
+    % Bottom-left: from (0,-50cm+height) to (width,-50cm)
+    \sidepanelmapcover{0cm}{\dimexpr-50cm+#3\relax}{#2}{-50cm}%
+  \else\ifx\corner@arg\corner@BR
+    % Bottom-right: from (innerwidth-width,-50cm+height) to (innerwidth,-50cm)
+    \sidepanelmapcover{\dimexpr\sidepanelpanelinnerwidth-#2\relax}{\dimexpr-50cm+#3\relax}{\sidepanelpanelinnerwidth}{-50cm}%
+  \fi\fi\fi\fi
+}
+\makeatother
+
+\endinput

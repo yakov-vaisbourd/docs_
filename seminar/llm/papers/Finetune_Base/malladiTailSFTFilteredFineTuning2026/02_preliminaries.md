@@ -1,0 +1,18 @@
+# 2 Preliminaries on Coverage
+
+We formalize coverage as a property of the SFT initialization that captures how readily reward-bearing responses can be sampled. We then relate coverage to pass@ $K$, which provides an empirical measure of the learning signal available to RL at the start of post-training.
+
+Notation and setting. Consider a prompt distribution $\mu$ over a prompt space $\mathcal{X}$, a response space $\mathcal{Y}$, and a language model \(\pi(\cdot \mid x) \in \Delta(\mathcal{Y})\). We focus on verifiable tasks with binary reward $R: \mathcal{X} \times \mathcal{Y} \rightarrow\{0,1\}$, where \(R(x, y)=1\) indicates that response $y$ is correct for prompt $x$. In SFT, we observe ( $x_{i}, y_{i}$ ) with $x_{i} \sim \mu$ and \(y_{i} \sim \pi_{\mathrm{D}}\left(\cdot \mid x_{i}\right)\), where $\pi_{\mathrm{D}}$ assigns probability to reward-bearing responses. Standard SFT minimizes the sequence-level cross-entropy \(\ell_{\pi}(x, y)=-\log \pi(y \mid x)\), and the resulting model $\pi_{\text {SFT }}$ initializes RL.
+
+The coverage profile. Consider a single prompt $x$, and let \(p_{\pi}(x):=\operatorname{Pr}_{y \sim \pi(\cdot \mid x)}[R(x, y)=1]\). A batch of $K$ independent rollouts contains at least one rewarding response with probability \(1-\left(1-p_{\pi}(x)\right)^{K}\). If all $K$ rollouts receive zero reward, no gradient is received for their corresponding prompt. Thus, useful responses must have sufficient probability under the initialization to have a chance of being produced during RL. Across a dataset of many prompts, the model may benefit via positive transfer from easier to harder prompts, but the initial probability of rewarding responses, \(p_{\pi}(x)\), determines the learning signal available before such transfer.
+
+The coverage profile formalizes this property relative to the ground-truth, SFT-data policy (Chen et al., 2026a). We assume that $\pi_{\mathrm{D}}$ assigns non-negligible probability to reward-bearing responses, so coverage of $\pi_{\mathrm{D}}$ is relevant to downstream RL.
+
+Definition 2.1 (Coverage Profile). Given a data-generating policy $\pi_{\mathrm{D}}$ and model $\pi$, the coverage profile at scale $N$ is
+$$
+\operatorname{Cov}_{N}\left(\pi_{\mathrm{D}} \| \pi\right):=\operatorname{Pr}_{x \sim \mu, y \sim \pi_{\mathrm{D}}(\cdot \mid x)}\left[\frac{\pi_{\mathrm{D}}(y \mid x)}{\pi(y \mid x)} \geq N\right] .
+$$
+The coverage profile measures the probability mass under $\pi_{\mathrm{D}}$ that $\pi$ underweights by a factor of at least $N$; smaller values indicate better coverage. The scale $N$ determines the sampling budget needed to reach this mass. Chen et al. (2026a) show that, if \(\operatorname{Cov}_{N}\left(\pi_{\mathrm{D}} \| \pi\right) \leq \frac{1}{2}\), then \(K \geq 2 N \log (1 / \varepsilon)\) samples suffice for Best-of- $K$ to achieve expected reward within \(\operatorname{Cov}_{N}\left(\pi_{\mathrm{D}} \| \pi\right)+\varepsilon\) of $\pi_{\mathrm{D}}$, with a corresponding worst-case necessity result with a comparable relationship between $N$ and $K$. Thus, coverage at scale $N$ characterizes which useful responses are accessible with a sampling budget on the order of $N$.
+
+Since \(\pi_{\mathrm{D}}(y \mid x)\) is generally unknown, the coverage profile cannot be measured directly. However, for binary rewards, \(\operatorname{pass} @ K(\pi):=\mathbb{E}_{x \sim \mu}\left[1-\left(1-p_{\pi}(x)\right)^{K}\right]\) is exactly the expected reward of Best-of- $K$ sampling (Brown et al., 2024). We therefore use pass@ $K$ at large $K$ as an empirical measure of coverage. At a $K$ comparable to the RL rollout budget, it also measures how often the policy exposes RL to reward-bearing responses.
+

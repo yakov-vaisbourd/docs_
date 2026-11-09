@@ -1,0 +1,654 @@
+\PassOptionsToPackage{table}{xcolor}
+\documentclass[aspectratio=169]{beamer}
+% \setbeameroption{show notes}
+
+\makeatletter
+\def\input@path{{../styles/}}
+\makeatother
+\graphicspath{{../styles/}{../styles/images/}{resources/}}
+\usetheme{Atlas}
+\usetikzlibrary{positioning,decorations.pathreplacing,arrows.meta,calc}
+% The theme's frametitle template leaves only ~0.2cm below the title, which
+% collides with descenders / bordered content placed right under it. Add a
+% small, consistent buffer after every frame title without editing the .sty.
+\addtobeamertemplate{frametitle}{}{\vspace{4mm}}
+
+\usepackage[utf8]{inputenc}
+\setlist[enumerate]{label=\arabic*., leftmargin=*}
+
+% ---- Notation shortcuts ----
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\PA}{\mathbb{A}}              % CPI policy advantage
+\newcommand{\DKL}{D_{\mathrm{KL}}}
+\newcommand{\DTV}{D_{\mathrm{TV}}}
+\newcommand{\told}{\theta_{\mathrm{old}}}
+\newcommand{\piold}{\pi_{\mathrm{old}}}
+\newcommand{\pinew}{\pi_{\mathrm{new}}}
+
+\title{Reinforcement Learning Algorithms}
+\subtitle{From Policy Gradients to Trust Regions \& Preference Optimization}
+\author{Yakov}
+\date{October 2026}
+
+\begin{document}
+
+% ---------------- Title ----------------
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ===========================================================================
+%  PART I -- CONSERVATIVE POLICY ITERATION (Kakade & Langford, 2002)
+% ===========================================================================
+\section{Conservative Policy Iteration}
+
+% TODO(map): \atlasmapframe here once pres_map is drawn -- highlight "CPI".
+
+% ---------------- Setting & notation ----------------
+\begin{frame}{Where the Story Starts: Kakade \& Langford (2002)}
+  \textit{Approximately Optimal Approximate Reinforcement Learning} --- the paper that introduced \textbf{Conservative Policy Iteration (CPI)}.
+
+  \vspace{6pt}
+  \begin{slatebox}
+    \small\textbf{Reminder --- notation (normalized, discounted MDP):}
+    \begin{gather*}
+      V_\pi(s) = (1-\gamma)\,\E\Big[\textstyle\sum_{t} \gamma^t \mathcal{R}(s_t,a_t) \,\Big|\, \pi, s\Big], \qquad
+      A_\pi(s,a) = Q_\pi(s,a) - V_\pi(s) \\
+      d_{\pi,\mu}(s) = (1-\gamma)\textstyle\sum_{t} \gamma^t \Pr(s_t = s;\, \pi, \mu), \qquad
+      \eta_D(\pi) = \E_{s\sim D}\big[V_\pi(s)\big]
+    \end{gather*}
+  \end{slatebox}
+  \begin{itemize}
+    \item $d_{\pi,\mu}$: discounted state-visitation distribution when starting from $\mu$.
+    \item $(1-\gamma)$ normalization keeps $V, Q \in [0,R]$ and $A \in [-R,R]$.
+  \end{itemize}
+  \note{
+    \footnotesize
+    Source: Kakade \& Langford (2002), Sec.~2. The $(1-\gamma)$ factor is their normalization; TRPO drops it later, which changes constants in the bounds.
+  }
+\end{frame}
+
+% ---------------- Three questions ----------------
+\begin{frame}{Three Questions Any Approximate Method Should Answer}
+  \begin{enumerate}
+    \item Is there a \textbf{performance measure} that is guaranteed to \textbf{improve at every step}?
+    \item How hard is it to \textbf{verify} that a given update improves this measure?
+    \item What \textbf{performance level} is reached after a \textbf{reasonable number} of updates?
+  \end{enumerate}
+
+  \vspace{10pt}
+  \begin{noteframe}
+    \small Note: not ``what is the asymptotic policy?'' --- only policies reachable in reasonable time.
+  \end{noteframe}
+
+  \vspace{6pt}
+  \begin{columns}[t]
+    \begin{column}{0.48\textwidth}
+      \begin{warmbox}
+        \small\textbf{\color{AtlasWarm}Approximate value functions}\\
+        Weak answers to all three.
+      \end{warmbox}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{coolbox}
+        \small\textbf{\color{AtlasCool}Policy gradients}\\
+        Good answer to (1), poor answers to (2) and (3).
+      \end{coolbox}
+    \end{column}
+  \end{columns}
+  \note{\footnotesize Kakade \& Langford, Sec.~3. These three questions frame the whole paper; the summary slide at the end of Part~I returns to them.}
+\end{frame}
+
+% ---------------- Gap 1: approximate value functions ----------------
+\begin{frame}{Gap 1: Approximate Value Functions Give No Improvement Guarantee}
+  \begin{itemize}
+    \item Exact policy iteration: evaluate $Q_\pi$, act greedily, repeat --- strong convergence results.
+    \item Approximate version: plug in an approximation $\tilde V$ with $\ell_\infty$ error
+      \begin{gather*}
+        \varepsilon = \max_s \big|\tilde V(s) - V_\pi(s)\big|
+      \end{gather*}
+    \item With $\pi'$ greedy w.r.t.\ $\tilde V$, the best known guarantee (Bertsekas \& Tsitsiklis, \emph{Neuro-Dynamic Programming}, 1996):
+  \end{itemize}
+  \begin{formulabox}
+    $\displaystyle V_{\pi'}(s) \;\ge\; V_\pi(s) - \frac{2\gamma\varepsilon}{1-\gamma} \qquad \forall s$
+  \end{formulabox}
+  \begin{badbox}
+    \small Only says the policy \textbf{won't get much worse} --- never that it gets better. The error must be small \emph{everywhere} ($\ell_\infty$).
+  \end{badbox}
+  \note{\footnotesize Kakade \& Langford, Sec.~3.1, Eq.~3.1, citing ref.~[3] (Bertsekas \& Tsitsiklis). Question~2 is not even applicable since no improvement measure is guaranteed.}
+\end{frame}
+
+% ---------------- Gap 2: policy gradient, example 1 ----------------
+\begin{frame}{Gap 2: Policy Gradients --- Example 1 (Exploration)}
+  \begin{gather*}
+    \nabla \eta_D = \sum_{s,a} d_{\pi,D}(s)\, \nabla \pi(a;s)\, Q_\pi(s,a)
+  \end{gather*}
+  \begin{center}
+  \begin{tikzpicture}[st/.style={circle, draw=AtlasCool, thick, minimum size=0.75cm, font=\small},
+                      >=Stealth, node distance=1.15cm]
+    \node[st] (s1) {$1$};
+    \node[st, right=of s1] (s2) {$2$};
+    \node[st, right=of s2] (s3) {$3$};
+    \node[right=0.6cm of s3] (dots) {$\cdots$};
+    \node[st, right=0.6cm of dots, fill=GoodGreen!15, draw=GoodGreen] (sn) {$n$};
+    \foreach \a/\b in {s1/s2, s2/s3} {
+      \draw[->, AtlasCool] (\a) to[bend left=25] node[above, font=\scriptsize]{1 action} (\b);
+      \draw[->, AtlasWarm] (\b) to[bend left=25] node[below, font=\scriptsize]{2 actions} (\a);
+    }
+    \draw[->, AtlasCool] (s3) to[bend left=25] (dots);
+    \draw[->, AtlasWarm] (dots) to[bend left=25] (s3);
+    \draw[->, AtlasCool] (dots) to[bend left=25] (sn);
+    \node[below=0.15cm of sn, font=\scriptsize, GoodGreen] {goal};
+  \end{tikzpicture}
+  \end{center}
+  \begin{itemize}
+    \item Uniform random policy: expected time to goal $= 3(2^n - n - 1) \approx 10^{15}$ for $n=50$.
+    \item Before reaching the goal, every sensible gradient estimate is $\mathbf{0}$:
+      right \emph{magnitude}, but \textbf{no direction}.
+    \item Importance sampling doesn't help: weights would be exponentially large.
+  \end{itemize}
+  \note{\footnotesize Kakade \& Langford, Sec.~3.2, Fig.~3.1 (adapted from their ref.~[10]). Schematic redrawn; the original figure link in the markdown expired.}
+\end{frame}
+
+% ---------------- Gap 2: policy gradient, example 2 ----------------
+\begin{frame}{Gap 2: Policy Gradients --- Example 2 (Plateaus)}
+  \begin{columns}[c]
+    \begin{column}{0.4\textwidth}
+      \centering
+      \begin{tikzpicture}[st/.style={circle, draw=AtlasCool, thick, minimum size=0.9cm},
+                          >=Stealth]
+        \node[st] (i) at (0,0) {$i$};
+        \node[st] (j) at (3,0) {$j$};
+        \draw[->] (i) to[bend left=25] node[above, font=\scriptsize]{$a_2$} (j);
+        \draw[->] (j) to[bend left=25] node[below, font=\scriptsize]{$a_2$} (i);
+        \draw[->] (i) to[loop above, looseness=6] node[above, font=\scriptsize]{$a_1$} (i);
+        \draw[->] (j) to[loop above, looseness=6] node[above, font=\scriptsize]{$a_1$} (j);
+      \end{tikzpicture}
+
+      \vspace{4pt}
+      {\scriptsize Gibbs policy: $\pi(a;s) \propto \exp(\theta_{sa})$}
+    \end{column}
+    \begin{column}{0.56\textwidth}
+      \begin{itemize}
+        \item Start: $\rho(i)=0.8,\ \rho(j)=0.2$.
+        \item Raising the self-loop at $i$ \textbf{starves} state $j$.
+        \item $\rho(j)$ drops to $\approx 10^{-7}$ $\Rightarrow$ nothing is learned at $j$.
+        \item Result: an extremely \textbf{flat plateau} (on a $10^7$ time scale).
+      \end{itemize}
+    \end{column}
+  \end{columns}
+
+  \vspace{8pt}
+  \begin{badbox}
+    \small Root cause: $\eta_D$ weighs improvements by $d_{\pi,D}$ --- it is \textbf{insensitive to improvement at unlikely states}, even when those states are needed for near-optimal performance.
+  \end{badbox}
+  \note{\footnotesize Kakade \& Langford, Sec.~3.2, Figs.~3.2--3.3. Schematic only: the transition structure is simplified; check the paper's figure if exact rewards are needed. Initial policy: $\pi(a_1;i)=0.8$, $\pi(a_1;j)=0.9$.}
+\end{frame}
+
+% ---------------- Two fixes ----------------
+\begin{frame}{The Two Fixes}
+  \begin{columns}[t]
+    \begin{column}{0.48\textwidth}
+      \begin{warmbox}
+        \textbf{\color{AtlasWarm}1. Restart distribution $\mu$}\\[4pt]
+        \small Optimize a measure that weighs states more uniformly:
+        \begin{gather*}
+          \eta_\mu(\pi) = \E_{s\sim\mu}\big[V_\pi(s)\big]
+        \end{gather*}
+        $\mu$ is ``exploratory''; the agent can restart from $s\sim\mu$ (weaker than a generative model).
+      \end{warmbox}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{coolbox}
+        \textbf{\color{AtlasCool}2. Conservative update}\\[4pt]
+        \small Don't jump to the greedy policy --- mix:
+        \begin{gather*}
+          \pinew(a;s) = (1-\alpha)\,\pi(a;s) + \alpha\,\pi'(a;s)
+        \end{gather*}
+        $\alpha \in [0,1]$ acts as a \textbf{step size}. $\alpha = 1$ is greedy policy iteration.
+      \end{coolbox}
+    \end{column}
+  \end{columns}
+
+  \vspace{8pt}
+  \begin{itemize}
+    \item Any optimal policy maximizes both $\eta_\mu$ and $\eta_D$ --- but within a restricted class they can differ.
+  \end{itemize}
+  \note{\footnotesize Kakade \& Langford, Def.~2.1 and Sec.~4, Eq.~4.1.}
+\end{frame}
+
+% ---------------- Policy advantage ----------------
+\begin{frame}{A New Quantity: the Policy Advantage}
+  \begin{formulabox}
+    $\displaystyle \PA_{\pi,\mu}(\pi') \;=\; \E_{s\sim d_{\pi,\mu}}\Big[\E_{a\sim\pi'(\cdot;s)}\big[A_\pi(s,a)\big]\Big]$
+  \end{formulabox}
+  \begin{itemize}
+    \item How much $\pi'$ picks high-advantage actions, \textbf{on the states $\pi$ visits} (from $\mu$).
+    \item One step of policy improvement maximizes it.
+    \item It is exactly the \textbf{first-order} change of $\eta_\mu$ in $\alpha$:
+  \end{itemize}
+  \begin{gather*}
+    \left.\frac{\partial \eta_\mu}{\partial \alpha}\right|_{\alpha=0} = \frac{1}{1-\gamma}\PA_{\pi,\mu}(\pi')
+    \qquad\Longrightarrow\qquad
+    \Delta\eta_\mu = \frac{\alpha}{1-\gamma}\PA_{\pi,\mu}(\pi') + O(\alpha^2)
+  \end{gather*}
+  \begin{goodbox}
+    \small Small $\alpha$ + positive policy advantage $\Rightarrow$ improvement. Large $\alpha$ $\Rightarrow$ possible degradation. How large can $\alpha$ be?
+  \end{goodbox}
+  \note{\footnotesize Kakade \& Langford, Sec.~4.1, Eq.~4.2. Key point for TRPO: the surrogate that only uses the \emph{old} state distribution matches the true objective to first order.}
+\end{frame}
+
+% ---------------- Improvement bound ----------------
+\begin{frame}{How Big a Step? The Improvement Bound}
+  \textbf{Theorem 4.1.} With $\varepsilon = \max_s \big|\E_{a\sim\pi'}[A_\pi(s,a)]\big|$, for all $\alpha\in[0,1]$:
+  \begin{formulabox}
+    $\displaystyle \eta_\mu(\pinew) - \eta_\mu(\pi) \;\ge\; \frac{\alpha}{1-\gamma}\Big(\PA - \frac{2\alpha\gamma\varepsilon}{1-\gamma(1-\alpha)}\Big)$
+  \end{formulabox}
+  \begin{itemize}
+    \item First term: the first-order gain. Second term: a penalty growing with $\alpha$.
+    \item At $\alpha=1$ it reduces to the greedy-DP form: $\frac{\PA}{1-\gamma} - \frac{2\gamma\varepsilon}{1-\gamma}$.
+  \end{itemize}
+
+  \vspace{4pt}
+  \textbf{Corollary 4.2.} If $\PA \ge 0$, choosing $\alpha = \frac{(1-\gamma)\PA}{4R}$ guarantees
+  \begin{gather*}
+    \eta_\mu(\pinew) - \eta_\mu(\pi) \;\ge\; \frac{\PA^2}{8R}
+  \end{gather*}
+  \note{\footnotesize Kakade \& Langford, Thm.~4.1 and Cor.~4.2. The bound is tight for all $\alpha$ (two-state example, not given in the paper). Larger policy advantage $\Rightarrow$ larger guaranteed gain.}
+\end{frame}
+
+% ---------------- The algorithm ----------------
+\begin{frame}{Conservative Policy Iteration}
+  \begin{columns}[t]
+    \begin{column}{0.52\textwidth}
+      \begin{slatebox}
+        \small
+        \begin{enumerate}
+          \item $\pi' \leftarrow G_\varepsilon(\pi,\mu)$ \hfill {\scriptsize(greedy policy chooser)}
+          \item Estimate $\hat\PA \approx \PA_{\pi,\mu}(\pi')$ with $\mu$-restarts
+          \item If $\hat\PA < \tfrac{2\varepsilon}{3}$: \textbf{stop}, return $\pi$
+          \item Else: mix with $\alpha = \frac{(1-\gamma)(\hat\PA - \varepsilon/3)}{4R}$, go to 1
+        \end{enumerate}
+      \end{slatebox}
+      {\scriptsize $G_\varepsilon$: returns $\pi'$ with $\PA_{\pi,\mu}(\pi') \ge \max_{\pi''}\PA_{\pi,\mu}(\pi'') - \varepsilon$ --- e.g.\ a regression on advantages with \emph{average} error $\le \varepsilon/2$.}
+    \end{column}
+    \begin{column}{0.44\textwidth}
+      \textbf{Theorem 4.4.} With prob.\ $\ge 1-\delta$, CPI:
+      \begin{itemize}
+        \item[i)] improves $\eta_\mu$ at \textbf{every} update;
+        \item[ii)] stops within $72\,R^2/\varepsilon^2$ calls to $G_\varepsilon$;
+        \item[iii)] returns $\pi$ with $\mathrm{OPT}(\PA_{\pi,\mu}) < 2\varepsilon$.
+      \end{itemize}
+      \vspace{4pt}
+      {\small Number of updates does \textbf{not} depend on $\mu$ or on the state-space size.}
+    \end{column}
+  \end{columns}
+  \note{\footnotesize Kakade \& Langford, Def.~4.3, Thm.~4.4, Sec.~5. Estimation in step 2: sample $s\sim d_{\pi,\mu}$ by running from $s_0\sim\mu$ and accepting each state w.p.\ $1-\gamma$; pick a uniform action; roll out for $\hat Q$. Hoeffding gives $O(n_a^2R^2/\Delta^2)$ trajectories. Note the $\ell_1$ (average) regression condition is much weaker than the $\ell_\infty$ condition of greedy DP.}
+\end{frame}
+
+% ---------------- Performance difference lemma ----------------
+\begin{frame}{The Performance Difference Lemma}
+  \textbf{Lemma 6.1.} For any policies $\tilde\pi, \pi$ and start distribution $\mu$:
+  \begin{formulabox}
+    $\displaystyle \eta_\mu(\tilde\pi) - \eta_\mu(\pi) \;=\; \frac{1}{1-\gamma}\,\E_{s\sim d_{\tilde\pi,\mu},\ a\sim\tilde\pi}\big[A_\pi(s,a)\big]$
+  \end{formulabox}
+  \begin{itemize}
+    \item Exact --- no approximation. Proof: telescoping $V_\pi$ inside the sum over time.
+    \item The catch: the expectation is over the \textbf{new} policy's states $d_{\tilde\pi,\mu}$.
+    \item The policy advantage uses the \textbf{old} states $d_{\pi,\mu}$ --- hence only first-order accurate.
+  \end{itemize}
+  \begin{noteframe}
+    \small This identity is the starting point of TRPO (its Eq.~1).
+  \end{noteframe}
+  \note{\footnotesize Kakade \& Langford, Lemma~6.1. Proof sketch: add and subtract $V_\pi(s_t)$ at each step; the sum of $\gamma V_\pi(s_{t+1}) - V_\pi(s_t)$ telescopes to $-V_\pi(s_0)$, and the remaining terms are $A_\pi(s_t,a_t)$.}
+\end{frame}
+
+% ---------------- How good is the policy ----------------
+\begin{frame}{How Good Is the Policy Found?}
+  \textbf{Theorem 6.2.} If $\mathrm{OPT}(\PA_{\pi,\mu}) < \varepsilon$, then for any $\tilde\mu$:
+  \begin{gather*}
+    \eta_{\tilde\mu}(\pi^*) - \eta_{\tilde\mu}(\pi)
+    \;\le\; \frac{\varepsilon}{1-\gamma}\left\|\frac{d_{\pi^*,\tilde\mu}}{d_{\pi,\mu}}\right\|_\infty
+    \;\le\; \frac{\varepsilon}{(1-\gamma)^2}\left\|\frac{d_{\pi^*,\tilde\mu}}{\mu}\right\|_\infty
+  \end{gather*}
+  \begin{itemize}
+    \item \textbf{Distribution mismatch}: how well $\mu$ covers the states the optimal policy visits.
+    \item Small advantages under $d_{\pi,\mu}$ don't imply small advantages where $\pi^*$ goes.
+    \item A uniform-ish $\mu$ keeps the mismatch bounded --- this is why $\mu$ matters.
+    \item Two factors of $\frac{1}{1-\gamma}$: one from the lemma, one from $d_{\pi,\mu}(s) \ge (1-\gamma)\mu(s)$.
+  \end{itemize}
+  \note{\footnotesize Kakade \& Langford, Thm.~6.2 and Cor.~4.5 (the case $\tilde\mu = D$). Speed of CPI does not depend on $\mu$; quality of the result does. Sec.~7.3: choose $\mu$ using prior knowledge of where an optimal policy goes.}
+\end{frame}
+
+% ---------------- CPI summary ----------------
+\begin{frame}{CPI: Answers to the Three Questions}
+  \begin{enumerate}
+    \item \textbf{Improving measure:} $\eta_\mu$ improves at every update (Thm.~4.4).
+    \item \textbf{Verification:} estimate the policy advantage $\PA$ from samples (Hoeffding).
+    \item \textbf{Performance:} within $O(R^2/\varepsilon^2)$ updates, close to optimal up to the mismatch factor (Thm.~6.2).
+  \end{enumerate}
+
+  \vspace{8pt}
+  \begin{columns}[t]
+    \begin{column}{0.48\textwidth}
+      \begin{goodbox}
+        \small\textbf{Kept going forward}
+        \begin{itemize}
+          \item Surrogate on the old state distribution
+          \item Improvement lower bound = gain $-$ penalty
+          \item Small, controlled steps
+        \end{itemize}
+      \end{goodbox}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{badbox}
+        \small\textbf{Limitations}
+        \begin{itemize}
+          \item Only \textbf{mixture} policies
+          \item Needs a restart distribution
+          \item Theoretical step sizes are tiny
+        \end{itemize}
+      \end{badbox}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ===========================================================================
+%  PART II -- TRUST REGION POLICY OPTIMIZATION (Schulman et al., 2015)
+% ===========================================================================
+\section{Trust Region Policy Optimization}
+
+% TODO(map): \atlasmapframe here once pres_map is drawn -- highlight "TRPO".
+
+% ---------------- From CPI to TRPO ----------------
+\begin{frame}{TRPO: Starting From the Same Identity}
+  {\small TRPO uses unnormalized returns $\eta(\pi) = \E\big[\sum_t \gamma^t r(s_t)\big]$ and visitation $\rho_\pi(s) = \sum_t \gamma^t P(s_t = s)$.}
+  \begin{gather*}
+    \eta(\tilde\pi) = \eta(\pi) + \sum_s \rho_{\tilde\pi}(s) \sum_a \tilde\pi(a\mid s)\, A_\pi(s,a)
+    \qquad\text{\small(performance difference)}
+  \end{gather*}
+  $\rho_{\tilde\pi}$ depends on $\tilde\pi$ in a complicated way $\Rightarrow$ replace it by the \textbf{old} visitation:
+  \begin{formulabox}
+    $\displaystyle L_\pi(\tilde\pi) = \eta(\pi) + \sum_s \rho_{\pi}(s) \sum_a \tilde\pi(a\mid s)\, A_\pi(s,a)$
+  \end{formulabox}
+  \begin{itemize}
+    \item Matches $\eta$ to first order: $L_{\pi_{\theta_0}}(\pi_{\theta_0}) = \eta(\pi_{\theta_0})$ and equal gradients at $\theta_0$.
+    \item Same idea as CPI's policy advantage --- but says nothing about \textbf{how big} a step is safe.
+  \end{itemize}
+  \note{\footnotesize TRPO, Sec.~2, Eqs.~1--4. Their CPI bound restated (slightly weakened): $\eta(\pinew) \ge L_{\piold}(\pinew) - \frac{2\epsilon\gamma}{(1-\gamma)^2}\alpha^2$ with $\epsilon = \max_s|\E_{a\sim\pi'}A_\pi(s,a)|$ --- valid only for mixture policies.}
+\end{frame}
+
+% ---------------- Theorem 1 ----------------
+\begin{frame}{From Mixtures to Any Stochastic Policy}
+  CPI's bound only holds for mixtures. TRPO replaces the mixing weight $\alpha$ by a \textbf{distance} between policies:
+  \begin{gather*}
+    \alpha = \DTV^{\max}(\piold,\pinew) = \max_s \DTV\big(\piold(\cdot\mid s)\,\|\,\pinew(\cdot\mid s)\big)
+  \end{gather*}
+  \textbf{Theorem 1.}
+  \begin{formulabox}
+    $\displaystyle \eta(\pinew) \;\ge\; L_{\piold}(\pinew) - \frac{4\epsilon\gamma}{(1-\gamma)^2}\,\alpha^2,
+    \qquad \epsilon = \max_{s,a}|A_\pi(s,a)|$
+  \end{formulabox}
+  \begin{itemize}
+    \item Proof idea: two distributions with $\DTV \le \alpha$ can be \textbf{coupled} to agree w.p.\ $1-\alpha$ --- so the new policy ``acts like a mixture''.
+    \item Note the different $\epsilon$: max over $(s,a)$ instead of CPI's max over $s$ of an expectation.
+  \end{itemize}
+  \note{\footnotesize TRPO, Sec.~3, Thm.~1; proofs in App.~A (coupling, adapted from Kakade \& Langford Thm.~4.1) and App.~B (perturbation theory).}
+\end{frame}
+
+% ---------------- TV -> KL and MM ----------------
+\begin{frame}{From TV to KL: a Minorize--Maximize Algorithm}
+  \begin{columns}[c]
+    \begin{column}{0.55\textwidth}
+      Use $\DTV(p\|q)^2 \le \DKL(p\|q)$:
+      \begin{gather*}
+        \eta(\tilde\pi) \ge \underbrace{L_\pi(\tilde\pi) - C\,\DKL^{\max}(\pi,\tilde\pi)}_{M_i(\tilde\pi)},
+        \quad C = \frac{4\epsilon\gamma}{(1-\gamma)^2}
+      \end{gather*}
+      \begin{itemize}
+        \item $M_i \le \eta$ everywhere, with equality at $\pi_i$.
+        \item Maximize $M_i$ $\Rightarrow$ $\eta(\pi_{i+1}) - \eta(\pi_i) \ge M_i(\pi_{i+1}) - M_i(\pi_i) \ge 0$.
+        \item \textbf{Monotone improvement} (with exact advantages).
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.85,
+          declare function={eta(\x) = 3 - 0.15*(\x-4)^2 + 0.25*sin(deg(3*\x));
+                             etap(\x) = -0.3*(\x-4) + 0.75*cos(deg(3*\x));
+                             mm(\x) = eta(2) + etap(2)*(\x-2) - 1.5*(\x-2)^2;}]
+        \draw[->, AtlasGray] (0,0) -- (5.6,0) node[right, font=\scriptsize]{$\theta$};
+        \draw[->, AtlasGray] (0,0) -- (0,3.6);
+        \draw[thick, AtlasCool, domain=0.3:5.4, samples=80] plot (\x, {eta(\x)});
+        \node[AtlasCool, font=\small] at (5.2,3.3) {$\eta$};
+        \draw[thick, AtlasWarm, domain=1.0:3.6, samples=60] plot (\x, {mm(\x)});
+        \node[AtlasWarm, font=\small] at (3.75,1.1) {$M_i$};
+        \fill[AtlasInk] (2,{eta(2)}) circle (1.5pt);
+        \draw[dashed, AtlasGray] (2,0) node[below, font=\scriptsize, text=AtlasInk]{$\theta_i$} -- (2,{eta(2)});
+        \draw[dashed, AtlasGray] (2.44,0) node[below, font=\scriptsize, text=AtlasInk, xshift=6pt]{$\theta_{i+1}$} -- (2.44,{eta(2.44)});
+        \fill[AtlasWarm] (2.44,{mm(2.44)}) circle (1.5pt);
+      \end{tikzpicture}
+    \end{column}
+  \end{columns}
+  \note{\footnotesize TRPO, Eq.~9 and Alg.~1. MM = minorization--maximization (Hunter \& Lange 2004), same family as EM. The plot is illustrative only.}
+\end{frame}
+
+% ---------------- Penalty -> constraint ----------------
+\begin{frame}{From Penalty to Constraint: the Trust Region}
+  \begin{columns}[t]
+    \begin{column}{0.48\textwidth}
+      \begin{warmbox}
+        \small\textbf{\color{AtlasWarm}Theory (penalty)}
+        \begin{gather*}
+          \max_\theta\ L_{\told}(\theta) - C\,\DKL^{\max}(\told,\theta)
+        \end{gather*}
+        With the theoretical $C$, steps are \textbf{tiny}; and a good $C$ is hard to choose robustly.
+      \end{warmbox}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{coolbox}
+        \small\textbf{\color{AtlasCool}Practice (constraint)}
+        \begin{gather*}
+          \max_\theta\ L_{\told}(\theta) \\
+          \text{s.t.}\ \ \DKL^{\max}(\told,\theta) \le \delta
+        \end{gather*}
+        $\delta$ is in policy space, so it transfers across problems ($\delta = 0.01$ in all experiments).
+      \end{coolbox}
+    \end{column}
+  \end{columns}
+
+  \vspace{8pt}
+  \begin{noteframe}
+    \small The guarantee is now heuristic: we optimize a surrogate inside a region where we \emph{trust} it.
+  \end{noteframe}
+  \note{\footnotesize TRPO, Sec.~4, Eqs.~10--11, and the summary at the end of Sec.~6.}
+\end{frame}
+
+% ---------------- Max KL -> mean KL ----------------
+\begin{frame}{From Max KL to Mean KL}
+  \begin{itemize}
+    \item $\DKL^{\max}$ is one constraint \textbf{per state} --- impractical to enforce or estimate.
+    \item Replace it with the average under the old visitation distribution:
+  \end{itemize}
+  \begin{gather*}
+    \bar D_{\mathrm{KL}}^{\rho}(\theta_1,\theta_2) = \E_{s\sim\rho}\Big[\DKL\big(\pi_{\theta_1}(\cdot\mid s)\,\|\,\pi_{\theta_2}(\cdot\mid s)\big)\Big]
+  \end{gather*}
+  \begin{formulabox}
+    $\displaystyle \max_\theta\ L_{\told}(\theta) \quad\text{s.t.}\quad \bar D_{\mathrm{KL}}^{\rho_{\told}}(\told,\theta) \le \delta$
+  \end{formulabox}
+  \begin{itemize}
+    \item An \textbf{expectation} $\Rightarrow$ can be estimated from samples.
+    \item Empirically performs like the max-KL version.
+  \end{itemize}
+  \note{\footnotesize TRPO, Sec.~4, Eq.~12.}
+\end{frame}
+
+% ---------------- Sampling ----------------
+\begin{frame}{Turning Sums Into Samples}
+  Expand $L_{\told}$ and apply three substitutions:
+  \begin{gather*}
+    \max_\theta \sum_s \rho_{\told}(s) \sum_a \pi_\theta(a\mid s)\, A_{\told}(s,a)
+  \end{gather*}
+  \begin{enumerate}
+    \item $\sum_s \rho_{\told}(s)[\cdot] \;\to\; \frac{1}{1-\gamma}\E_{s\sim\rho_{\told}}[\cdot]$
+    \item $A_{\told} \;\to\; Q_{\told}$ \hfill {\small(changes the objective by a constant)}
+    \item $\sum_a \;\to$ \textbf{importance sampling} with a sampling distribution $q$
+  \end{enumerate}
+  \begin{formulabox}
+    $\displaystyle \max_\theta\ \E_{s\sim\rho_{\told},\,a\sim q}\!\left[\frac{\pi_\theta(a\mid s)}{q(a\mid s)}\,Q_{\told}(s,a)\right]
+    \ \ \text{s.t.}\ \ \E_{s\sim\rho_{\told}}\!\big[\DKL(\pi_{\told}(\cdot\mid s)\,\|\,\pi_\theta(\cdot\mid s))\big] \le \delta$
+  \end{formulabox}
+  \note{\footnotesize TRPO, Sec.~5, Eqs.~13--14. Remaining step: replace expectations by sample averages and $Q$ by Monte Carlo estimates.}
+\end{frame}
+
+% ---------------- Single path vs vine ----------------
+\begin{frame}{Two Sampling Schemes}
+  \begin{columns}[t]
+    \begin{column}{0.48\textwidth}
+      \begin{warmbox}
+        \small\textbf{\color{AtlasWarm}Single path}
+        \begin{itemize}
+          \item Roll out $\pi_{\told}$ from $s_0\sim\rho_0$; use every $(s_t,a_t)$.
+          \item $q = \pi_{\told}$; $\hat Q$ = discounted return-to-go.
+          \item \textbf{No state resets} --- works on real systems.
+        \end{itemize}
+      \end{warmbox}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{coolbox}
+        \small\textbf{\color{AtlasCool}Vine}
+        \begin{itemize}
+          \item Pick a ``rollout set'' of states on trunk trajectories.
+          \item From each, try $K$ actions $a\sim q$, short rollout per action (common random numbers).
+          \item \textbf{Lower variance}, but needs resets to arbitrary states --- like CPI's $\mu$-restarts.
+        \end{itemize}
+      \end{coolbox}
+    \end{column}
+  \end{columns}
+  \note{\footnotesize TRPO, Sec.~5.1--5.2, Fig.~1. Vine with continuous actions uses a self-normalized importance-sampling estimator, which removes the need for a baseline. $q=\pi_{\theta_i}$ for continuous control, uniform for Atari.}
+\end{frame}
+
+% ---------------- Solver 1: direction ----------------
+\begin{frame}{Solving the Trust-Region Problem (1): Search Direction}
+  Approximate around $\told$ --- \textbf{linear} objective, \textbf{quadratic} constraint:
+  \begin{gather*}
+    L(\theta) \approx L(\told) + g^\top(\theta - \told), \qquad
+    \bar D_{\mathrm{KL}}(\told,\theta) \approx \tfrac12(\theta-\told)^\top A\,(\theta-\told)
+  \end{gather*}
+  \begin{itemize}
+    \item $A_{ij} = \frac{\partial^2}{\partial\theta_i\partial\theta_j}\bar D_{\mathrm{KL}}(\told,\theta)$ is the \textbf{Fisher information matrix}.
+    \item Solution direction: $s \propto A^{-1} g$ --- the \textbf{natural gradient}.
+  \end{itemize}
+  \begin{noteframe}
+    \small $A$ is computed \emph{analytically} as the Hessian of the KL (integrating over actions), not as the covariance of sampled score functions.
+  \end{noteframe}
+  \note{\footnotesize TRPO, Sec.~6 and App.~C. With $A^{-1}g$ and a fixed step size we would get exactly Kakade's (2002) natural policy gradient; TRPO instead enforces the constraint at each step.}
+\end{frame}
+
+% ---------------- Solver 2: CG ----------------
+\begin{frame}{Solving the Trust-Region Problem (2): Conjugate Gradient}
+  \begin{itemize}
+    \item Forming or inverting $A$ (size $|\theta|\times|\theta|$) is impossible for neural networks.
+    \item \textbf{Conjugate gradient} solves $Ax = g$ using only \textbf{Fisher-vector products} $y \mapsto Ay$.
+  \end{itemize}
+  \begin{slatebox}
+    \small\textbf{Fisher-vector product.} If the network outputs distribution parameters $\mu_\theta(x)$:
+    \begin{gather*}
+      A = J^\top M J, \qquad J = \frac{\partial\mu}{\partial\theta},\quad M = \text{Fisher of the distribution w.r.t.\ } \mu
+    \end{gather*}
+    $Jy$ and $J^\top v$ are standard autodiff operations (forward / backprop).
+  \end{slatebox}
+  \begin{itemize}
+    \item $k = 10$ CG iterations is enough.
+    \item Compute Fisher-vector products on $\sim$10\% of the data $\Rightarrow$ total cost $\approx$ one gradient.
+  \end{itemize}
+  \note{\footnotesize TRPO, App.~C and C.1. The second-derivative term of $\mu(x)$ vanishes at $\theta=\told$, leaving $J^\top M J$. Alternative: generic Hessian-vector products of $\bar D_{\mathrm{KL}}$ --- slightly slower, easier to implement.}
+\end{frame}
+
+% ---------------- Solver 3: step size + line search ----------------
+\begin{frame}{Solving the Trust-Region Problem (3): Step Size \& Line Search}
+  \begin{itemize}
+    \item Given direction $s \approx A^{-1}g$, take the largest step that hits the KL boundary:
+  \end{itemize}
+  \begin{gather*}
+    \delta = \tfrac12(\beta s)^\top A(\beta s) \quad\Longrightarrow\quad \beta = \sqrt{\frac{2\delta}{s^\top A s}}
+  \end{gather*}
+  \begin{itemize}
+    \item The approximations are only local, so do a \textbf{backtracking line search}: shrink $\beta$ exponentially until
+      \begin{itemize}
+        \item the true surrogate $L_{\told}(\theta)$ improves, \textbf{and}
+        \item the true constraint $\bar D_{\mathrm{KL}}(\told,\theta) \le \delta$ holds.
+      \end{itemize}
+  \end{itemize}
+  \begin{badbox}
+    \small Without the line search, TRPO occasionally takes large steps that cause \textbf{catastrophic} performance drops.
+  \end{badbox}
+  \note{\footnotesize TRPO, App.~C. $s^\top A s$ comes for free from CG. Line search objective: $L_{\told}(\theta) - \mathcal{X}[\bar D_{\mathrm{KL}} \le \delta]$ with $\mathcal{X}$ = 0 if true, $+\infty$ otherwise.}
+\end{frame}
+
+% ---------------- TRPO algorithm ----------------
+\begin{frame}{The TRPO Algorithm}
+  \begin{slatebox}
+    \textbf{Repeat:}
+    \begin{enumerate}
+      \item Collect $(s,a)$ pairs with Monte Carlo $\hat Q$ estimates (single path or vine).
+      \item Build the sample estimates of the surrogate $L$ and the mean-KL constraint.
+      \item Compute $g = \nabla_\theta L$; solve $As = g$ with conjugate gradient (Fisher-vector products).
+      \item Step size $\beta = \sqrt{2\delta / s^\top A s}$; backtracking line search on $L$ and the KL.
+      \item $\told \leftarrow \told + \beta s$.
+    \end{enumerate}
+  \end{slatebox}
+  \vspace{4pt}
+  {\small Cost per update: only slightly more than computing the gradient itself.}
+  \note{\footnotesize TRPO, Sec.~6.}
+\end{frame}
+
+% ---------------- Connections ----------------
+\begin{frame}{One Problem, Several Known Algorithms}
+  \begin{center}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{l l l}
+    \toprule
+    \textbf{Objective} & \textbf{Constraint / penalty} & \textbf{Algorithm} \\
+    \midrule
+    Linear in $\theta$ & $\tfrac12\|\theta-\told\|^2 \le \delta$ & Vanilla policy gradient \\
+    Linear in $\theta$ & Quadratic KL, fixed step $\tfrac{1}{\lambda}$ & Natural policy gradient \\
+    Full $L_{\piold}(\pi)$ & none & Policy iteration \\
+    $L_{\told}(\theta)$ & $\bar D_{\mathrm{KL}} \le \delta$, enforced & \textbf{TRPO} \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \vspace{6pt}
+  \begin{itemize}
+    \item NPG vs.\ TRPO: same direction $A^{-1}g$; TRPO \textbf{enforces} the KL constraint each step --- matters on larger problems.
+    \item Related: REPS constrains the joint $p(s,a)$; TRPO constrains only $\pi(a\mid s)$.
+  \end{itemize}
+  \note{\footnotesize TRPO, Sec.~7.}
+\end{frame}
+
+% ---------------- Recap: chain of approximations ----------------
+\begin{frame}{Recap: From Theory to Practice}
+  \begin{center}
+  \begin{tikzpicture}[box/.style={draw=AtlasCool, rounded corners, fill=AtlasCool!6, font=\scriptsize, align=center, minimum height=0.9cm, text width=2.6cm},
+                      >=Stealth, node distance=0.35cm]
+    \node[box] (a) {CPI bound\\(mixtures, $\alpha$)};
+    \node[box, right=of a] (b) {Thm.~1\\($\DTV^{\max}$)};
+    \node[box, right=of b] (c) {KL penalty\\(MM, monotone)};
+    \node[box, right=of c] (d) {Trust region\\($\DKL^{\max}\le\delta$)};
+    \node[box, below=0.8cm of d] (e) {Mean KL\\($\bar D_{\mathrm{KL}}\le\delta$)};
+    \node[box, left=of e] (f) {Samples + IS\\(single path / vine)};
+    \node[box, left=of f] (g) {Linear + quadratic\\(natural gradient)};
+    \node[box, left=of g, draw=AtlasWarm, fill=AtlasWarm!8] (h) {CG + line search\\(\textbf{TRPO})};
+    \draw[->] (a) -- (b); \draw[->] (b) -- (c); \draw[->] (c) -- (d);
+    \draw[->] (d) -- (e); \draw[->] (e) -- (f); \draw[->] (f) -- (g); \draw[->] (g) -- (h);
+  \end{tikzpicture}
+  \end{center}
+  \vspace{4pt}
+  \begin{itemize}
+    \item Each arrow trades a guarantee for practicality.
+    \item What's left: a heavy second-order solver $\Rightarrow$ motivation for simpler, first-order methods.
+  \end{itemize}
+  \note{\footnotesize Theory ignores advantage-estimation error (Kakade \& Langford handle it; TRPO omits it for simplicity).}
+\end{frame}
+
+\end{document}

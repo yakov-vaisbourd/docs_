@@ -1,0 +1,294 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{beamerthemeAtlas}
+
+% ---------------------------------------------------------------------------
+% Atlas: a minimalist, white-background beamer theme with a thin colored
+% spine on the left edge, plus a "map return" mechanic — a dedicated frame
+% type where that spine widens into a colored panel (meant to hold an
+% Excalidraw-style presentation map, optionally with per-slide highlight
+% marks) while the rest of the slide shows the normal content dimmed behind
+% it, as if the map were laid over the top.
+% ---------------------------------------------------------------------------
+
+\RequirePackage{tikz}
+\usetikzlibrary{calc,arrows.meta,angles,quotes}
+\RequirePackage{xcolor}
+\RequirePackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\RequirePackage[T1]{fontenc}
+\RequirePackage{sidepanel}
+\RequirePackage{amsmath,amssymb}
+\RequirePackage{booktabs}
+\RequirePackage{array}
+\RequirePackage{multirow}
+\RequirePackage{listings}
+\RequirePackage{enumitem}
+\sidepanelside{left}
+% Computer Modern Sans Serif (LaTeX's own sans font, cmss) as the default
+% text family, in place of the usual Computer Modern Roman.
+\renewcommand{\familydefault}{\sfdefault}
+
+% ---- Theme colors (override with \colorlet{AtlasAccent}{...} before \usetheme{Atlas}) ----
+% Dark, metallic slate blue. AtlasAccentLight/Dark are the two ends of the
+% gradient used to give the spine/line a brushed-metal sheen.
+\providecolor{AtlasAccent}{RGB}{35, 62, 88}
+\providecolor{AtlasAccentLight}{RGB}{92, 126, 156}
+\providecolor{AtlasAccentDark}{RGB}{18, 34, 50}
+\providecolor{AtlasInk}{RGB}{35, 35, 38}
+\providecolor{AtlasGray}{RGB}{130, 130, 130}
+
+% Map-return panel highlight rings (see sidepanel.sty's \sidepanelhighlight)
+% use the same metallic blue pair as the spine.
+\colorlet{sidepanelhighlightcolor1}{AtlasAccentDark}
+\colorlet{sidepanelhighlightcolor2}{AtlasAccentLight}
+\colorlet{sidepaneltextcolor}{AtlasInk}
+
+% A two-tone accent pair for decks that want to contrast two ideas side by
+% side (e.g. two definitions, two approaches): AtlasCool is the theme's own
+% metallic blue; AtlasWarm is a muted copper that reads as its metallic
+% counterpart rather than clashing with it.
+\colorlet{AtlasCool}{AtlasAccent}
+\providecolor{AtlasWarm}{RGB}{184, 115, 51}
+
+% A third, neutral accent for single-box content that isn't part of a
+% warm/cool contrast pair (e.g. a standalone "here are the mechanics" list) --
+% a muted plum/mauve, distinct from both AtlasWarm's copper and AtlasCool's
+% blue so it doesn't imply a two-sided comparison.
+\providecolor{AtlasSlate}{RGB}{108, 79, 122}
+
+% ---- Gentle tinted boxes, for pairing/contrasting two ideas on a slide ----
+% A light wash of AtlasWarm/AtlasCool (6% color into white) with a thin
+% same-color rule and rounded corners --- soft enough not to fight the
+% theme's minimalism, but enough to visually pair with the matching
+% \color{AtlasWarm}/\color{AtlasCool} headings already used for contrast.
+\newtcolorbox{warmbox}[1][]{%
+  colback=AtlasWarm!6!white, colframe=AtlasWarm,
+  boxrule=0.5pt, arc=3pt, left=8pt, right=8pt, top=6pt, bottom=6pt, #1}
+\newtcolorbox{coolbox}[1][]{%
+  colback=AtlasCool!6!white, colframe=AtlasCool,
+  boxrule=0.5pt, arc=3pt, left=8pt, right=8pt, top=6pt, bottom=6pt, #1}
+% Same treatment, single-idea variant using AtlasSlate instead of a
+% warm/cool pairing.
+\newtcolorbox{slatebox}[1][]{%
+  colback=AtlasSlate!6!white, colframe=AtlasSlate,
+  boxrule=0.5pt, arc=3pt, left=8pt, right=8pt, top=6pt, bottom=6pt, #1}
+
+% ---- Additional colors for verdict boxes and notes ----
+\definecolor{GoodGreen}{RGB}{46, 139, 87}
+\definecolor{BadRed}{RGB}{200, 60, 50}
+\definecolor{LightGood}{RGB}{232, 245, 238}
+\definecolor{LightBad}{RGB}{250, 233, 231}
+\definecolor{NoteGray}{RGB}{90, 90, 90}
+
+% ---- Verdict box environments ----
+\newtcolorbox{goodbox}[1][]{colback=LightGood, colframe=GoodGreen, boxrule=0.6pt, arc=2pt, left=6pt, right=6pt, top=4pt, bottom=4pt, #1}
+\newtcolorbox{badbox}[1][]{colback=LightBad, colframe=BadRed, boxrule=0.6pt, arc=2pt, left=6pt, right=6pt, top=4pt, bottom=4pt, #1}
+\newtcolorbox{formulabox}{colback=white, colframe=AtlasCool, boxrule=0.8pt, arc=2pt, left=8pt, right=8pt, top=6pt, bottom=6pt, halign=center}
+\newtcolorbox{noteframe}[1][]{colback=white, colframe=AtlasWarm, boxrule=0.6pt, arc=2pt, left=6pt, right=6pt, top=4pt, bottom=4pt, #1}
+
+% ---- Helper macros ----
+\newcommand{\landscapenote}[1]{%
+  \vspace{4pt}
+  {\small\color{NoteGray} #1}
+}
+\newcommand{\slidecaption}[1]{{\small\itshape #1}}
+
+% ---- Listings language definition for JSON-like code ----
+\lstdefinelanguage{jsonish}{
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  showstringspaces=false,
+  columns=fullflexible
+}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamercolor{normal text}{fg=AtlasInk, bg=white}
+\setbeamercolor{frametitle}{fg=AtlasInk, bg=white}
+\setbeamercolor{title}{fg=AtlasInk}
+\setbeamercolor{subtitle}{fg=AtlasGray}
+\setbeamercolor{author}{fg=AtlasGray}
+\setbeamercolor{date}{fg=AtlasGray}
+\setbeamercolor{item}{fg=AtlasAccent}
+\setbeamercolor{footline}{fg=AtlasGray}
+\setbeamertemplate{itemize item}{\textcolor{AtlasAccent}{\raisebox{0.15em}{\rule{0.45em}{0.45em}}}}
+\setbeamertemplate{itemize subitem}{\textcolor{AtlasGray}{--}}
+\setbeamerfont{frametitle}{series=\bfseries, size=\Large}
+\setbeamerfont{title}{series=\bfseries, size=\huge}
+
+\setbeamersize{text margin left=1.1cm, text margin right=1cm}
+
+% Width of the resting left spine, as a fraction of the paper width.
+% Redefine (e.g. \renewcommand{\atlasbarfrac}{0.02}) before \usetheme{Atlas}
+% to change the default thickness.
+\newcommand{\atlasbarfrac}{0.01}
+
+\AtBeginDocument{\pgfmathsetlength{\sidepanelbarwidth}{\atlasbarfrac\paperwidth}}
+
+% ---- Background: white page + thin left spine on every regular slide ----
+\setbeamertemplate{background}{
+  \begin{tikzpicture}[remember picture, overlay]
+    \fill[white] (current page.south west) rectangle (current page.north east);
+    \ifnum\c@framenumber=1\else
+      \sidepanelmarkbaranchor
+      \shade[top color=AtlasAccentLight, bottom color=AtlasAccentDark]
+        (sidepanelbaranchor) rectangle ($(sidepanelbaranchor)+(\sidepanelbarwidth, -\paperheight)$);
+    \fi
+  \end{tikzpicture}
+}
+
+% ---- Frame title ----
+\setbeamertemplate{frametitle}{
+  \vspace{0.55cm}
+  \usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}\insertframetitle
+  \vspace{-0.7cm}
+}
+
+% ---- Footline: minimal page number, bottom right ----
+% Suppressed during a map-return frame (\ifsidepanelactive): that frame's
+% own page number belongs to the reproduced/dimmed previous slide's look,
+% not to the current, real page -- showing this frame's real number there
+% would be misleading chrome that isn't part of either slide's true content.
+\setbeamertemplate{footline}{
+  \ifsidepanelactive\else
+    \ifnum\c@framenumber>1
+      \begin{tikzpicture}[remember picture, overlay]
+        \node[anchor=south east, xshift=-0.6cm, yshift=0.3cm, font=\tiny, text=AtlasGray]
+          at (current page.south east) {\insertframenumber};
+      \end{tikzpicture}
+    \fi
+  \fi
+}
+
+% ---- Title page ----
+\setbeamertemplate{title page}{
+  \vspace{2.4cm}
+  \begin{center}
+  \begin{minipage}{\dimexpr\textwidth-1cm\relax}
+    \centering
+    {\usebeamerfont{title}\usebeamercolor[fg]{title}\inserttitle}\par
+    \vspace{0.35cm}
+    {\Large\usebeamercolor[fg]{subtitle}\insertsubtitle}\par
+    \vspace{0.7cm}
+    {\large\usebeamercolor[fg]{author}\insertauthor}\par
+    \vspace{0.2cm}
+    {\normalsize\usebeamercolor[fg]{date}\insertdate}
+  \end{minipage}
+  \end{center}
+}
+
+% ===========================================================================
+%  MAP-RETURN FEATURE
+% ===========================================================================
+%
+% The resting spine (drawn by the background template above) sits at the
+% left edge, 1% of the page wide. A map-return frame keeps that same line
+% at its usual width but slides it rightward to `coverage` of the page
+% width. Everything to its LEFT is plain white and holds your map/Excalidraw
+% content, fully opaque. Everything to its RIGHT is the literal previous
+% slide — same title, same body, unmoved and unscaled — cropped by the line
+% and dimmed under a translucent white veil, so it reads as "the map slid
+% in from the left and is now covering most of the slide you were just on".
+%
+% The actual mechanism (recording a slide, reproducing it dimmed, the panel
+% geometry, the highlight/reveal helpers) lives in sidepanel.sty, shared
+% with any other theme that has an edge spine — see that file for the full
+% rationale behind each trick. Everything below is a thin, Atlas-named
+% wrapper over the generic \sidepanel... macros, kept so decks can write
+% \atlasSomething instead of \sidepanelSomething.
+%
+% \atlasmapframe[coverage]{map title}{map content}{title}{\boxreg}{anchorname}
+%   coverage : fraction (0-1) of the page width the line moves to,
+%              default 0.8. Configurable per slide, e.g. \atlasmapframe[0.55]{...}
+%   map title   : optional small caption above the map content, on white
+%              (leave empty {} for none)
+%   map content : what to draw in the white area left of the line —
+%              typically \includegraphics[width=\atlaspanelinnerwidth]{map.png}
+%              with \atlashighlight{<x>}{<y>}{<r>} calls layered on top to
+%              ring whichever region of the map is relevant this time.
+%   title, \boxreg, anchorname : the exact same title, box register and
+%              anchor name passed to \atlasslide (or \atlasrecordslide) for
+%              the real slide being revisited.
+%
+% \atlaspanelinnerwidth is made available inside the map content for sizing
+% (e.g. \includegraphics[width=\atlaspanelinnerwidth]{map.png}).
+\let\atlaspanelinnerwidth\sidepanelpanelinnerwidth
+
+% \atlasrecordslide{\boxreg}{anchorname}{body}
+%   Goes INSIDE the real \begin{frame}{...}...\end{frame} in place of the
+%   \global\sbox{...}{...} + tikzpicture pair. \boxreg must already exist via
+%   \newsavebox{\boxreg} (do that once, outside the frame).
+\newcommand{\atlasrecordslide}[3]{\sidepanelrecordslide{#1}{#2}{#3}}
+
+% \atlasslide{title}{\boxreg}{anchorname}{body}
+%   Full replacement for \begin{frame}{title}...\end{frame} when that slide
+%   will later be revisited via \atlasmapreturn: opens the frame, typesets
+%   the title, and records the body in one call. \boxreg must already
+%   exist via \newsavebox{\boxreg}.
+%
+% Full round-trip usage (declare once per revisitable slide, then reuse it
+% from as many \atlasmapreturn frames as you like):
+%   \newcommand{\pipelineTitle}{The LLM Alignment Pipeline}
+%   \newsavebox{\pipelineBox}
+%   \newcommand{\pipelineBody}{...the real slide content...}
+%   \atlasslide{\pipelineTitle}{\pipelineBox}{pipelineBodyAnchor}{\pipelineBody}
+%   ...
+%   \atlasmapreturn[0.8]{You are here}{%
+%     \includegraphics[width=\atlaspanelinnerwidth]{map}
+%     % layer \atlashighlight{x}{y}{r} calls on top, same coordinate units
+%     % as the image, to ring whichever region is relevant right now
+%   }{\pipelineTitle}{\pipelineBox}{pipelineBodyAnchor}
+%
+% \pipelineTitle must be the EXACT same title passed to \atlasslide for
+% that slide, and \pipelineBox/pipelineBodyAnchor the exact same box/anchor
+% names — that's what guarantees the reproduction is pixel-identical (same
+% line breaks for the body) rather than a hand-written paraphrase that can
+% drift out of sync. See sidepanel.sty's \sidepanelreproduce for why the
+% title has to be repeated here rather than recovered automatically.
+\newcommand{\atlasslide}[4]{\sidepanelslide{#1}{#2}{#3}{#4}}
+
+\newcommand{\atlasmapframe}[6][0.8]{\sidepanelmapframe[#1]{#2}{#3}{#4}{#5}{#6}}
+
+% \atlasmapreturn is kept as a plain alias of \atlasmapframe: both names are
+% provided so either verb reads naturally at a call site.
+\newcommand{\atlasmapreturn}[6][0.8]{\sidepanelmapframe[#1]{#2}{#3}{#4}{#5}{#6}}
+
+% \atlashighlight{x}{y}{radius} — draw a highlight ring at coordinate (x,y)
+% (in cm, relative to the current picture's own origin), for marking
+% "you are here" / "this is what we're covering now" on the map graphic.
+% Use inside a tikzpicture that itself sits inside the map content, e.g.:
+%   \begin{tikzpicture}
+%     \node[anchor=north west, inner sep=0pt]{\includegraphics[width=\atlaspanelinnerwidth]{map.png}};
+%     \atlashighlight{3.2}{-1.4}{0.6}
+%   \end{tikzpicture}
+\newcommand{\atlashighlight}[3]{\sidepanelhighlight{#1}{#2}{#3}}
+
+% \atlasmapcover{x1}{y1}{x2}{y2} — draw an opaque white rectangle over the map
+% content to hide a region of it (same coordinate system as \atlashighlight:
+% cm, relative to the enclosing tikzpicture's own origin). Use this to
+% progressively reveal a single master Excalidraw export across several
+% \atlasmapreturn frames instead of exporting a separate image per stage:
+% keep the diagram's components laid out in your intended reveal order, then
+% shrink the covered rectangle slide by slide. Draw it AFTER the
+% \includegraphics call in the same tikzpicture so it paints on top.
+%
+% Only suits a directional reveal (a curtain sliding down/up/left/right) —
+% if you need to reveal disconnected regions out of spatial order, use
+% several \atlasmapcover calls (one per region to hide) rather than a single
+% moving edge.
+\newcommand{\atlasmapcover}[4]{\sidepanelmapcover{#1}{#2}{#3}{#4}}
+
+% \atlasmapcoverbelow{y} / \atlasmapcoverabove{y} / \atlasmapcoverleft{x} /
+% \atlasmapcoverright{x} — convenience wrappers over \atlasmapcover for the
+% common case of a directional curtain: hide everything below/above/left/right
+% of a given coordinate. See sidepanel.sty for why these hug
+% \atlaspanelinnerwidth rather than an arbitrary huge constant.
+\newcommand{\atlasmapcoverbelow}[1]{\sidepanelmapcoverbelow{#1}}
+\newcommand{\atlasmapcoverabove}[1]{\sidepanelmapcoverabove{#1}}
+\newcommand{\atlasmapcoverleft}[1]{\sidepanelmapcoverleft{#1}}
+\newcommand{\atlasmapcoverright}[1]{\sidepanelmapcoverright{#1}}
+
+% \atlasmapcovercorner{corner}{width}{height} — convenience wrapper to cover
+% a corner region. Corner is one of: TL, TR, BL, BR.
+\newcommand{\atlasmapcovercorner}[3]{\sidepanelmapcovercorner{#1}{#2}{#3}}
+
+\endinput

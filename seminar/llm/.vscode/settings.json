@@ -1,0 +1,33 @@
+{
+  "latex-workshop.latex.tools": [
+    {
+      "name": "excalidraw-compile",
+      "command": "bash",
+      "args": [
+        "-c",
+        "BIN=$(command -v excalidraw-export || echo \"$HOME/.nvm/versions/node/v22.17.0/bin/excalidraw-export\"); find \"%WORKSPACE_FOLDER%\" -iname '*.excalidraw' -print0 | xargs -0 --no-run-if-empty \"$BIN\" --scale 3"
+      ],
+      "env": {}
+    },
+    {
+      "name": "pdflatex",
+      "command": "pdflatex",
+      "args": [
+        "-synctex=1",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "%DOC%"
+      ],
+      "env": {}
+    }
+  ],
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "pdflatex ➞ excalidraw-auto",
+      "tools": [
+        "excalidraw-compile",
+        "pdflatex"
+      ]
+    }
+  ]
+}

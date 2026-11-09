@@ -1,0 +1,30 @@
+# 3 Results
+
+We evaluate FLAN on natural language inference, reading comprehension, closed-book QA, translation, commonsense reasoning, coreference resolution, and struct-to-text. As described in §2.2 we evaluate on unseen tasks by grouping datasets into task clusters and holding out each cluster for evaluation while instruction tuning on all remaining clusters (i.e., each evaluation task cluster uses a different checkpoint). For each dataset, we evaluate the mean of performance on all templates, which proxies the expected performance given a typical natural language instruction. As a dev set is sometimes available for manual prompt engineering (Brown et al., 2020), for each dataset we also obtain the test set performance using the template with the best dev set performance.
+
+For comparison, we report zero and few-shot results for LaMDA-PT using the same prompts as GPT-3 (as LaMDA-PT is not suitable for natural instructions without instruction tuning). This baseline provides the most direct ablation of how much instruction tuning helps. Instruction tuning significantly improves LaMDA-PT on most datasets.
+
+We also show the zero-shot performances of GPT-3 175B (Brown et al., 2020) and GLaM 64B/64E (Du et al., 2021), as reported in their respective papers. With the best dev template, zero-shot FLAN outperforms zero-shot GPT-3 on 20 of 25 datasets and even surpasses GPT-3's few-shot performance on 10 datasets. With the best dev-template, zero-shot FLAN outperforms zero-shot GLaM on 13 of 19 available datasets and one-shot GLaM on 11 of 19 datasets.
+
+\footnotetext{
+${ }^{2}$ In this mixing scheme, a mixing rate maximum of 3,000 means that a dataset does not receive additional sampling weight for examples in excess of 3,000 .
+}
+
+Overall, we observe that instruction tuning is very effective on tasks naturally verbalized as instructions (e.g., NLI, QA, translation, struct-to-text) and is less effective on tasks directly formulated as language modeling, where instructions would be largely redundant (e.g., commonsense reasoning and coreference resolution tasks that are formatted as finishing an incomplete sentence or paragraph). Results on natural language inference, reading comprehension, closed-book QA, and translation are summarized in Figure 5 and described below.
+
+![Figure](./weiFinetunedLanguageModels2022_images/aa25be03-d0f6-48ca-994b-33ce39180820-05_973_1380_568_371.jpg)
+
+**Figure 5: Zero-shot performance of FLAN compared to LaMDA-PT 137B, GPT-3 175B, and GLaM 64B/64E on natural language inference, reading comprehension, closed-book QA, and translation. Performance of FLAN is the mean of up to 10 instructional templates per task. Supervised models were either T5, BERT, or translation models (specified in Table 2 and Table 1 in the Appendix).**
+
+Natural language inference (NLI). On five NLI datasets, where a model must determine whether a hypothesis is true given some premise, FLAN outperforms all baselines by a large margin. As noted by Brown et al. (2020), perhaps one reason why GPT-3 struggles with NLI is that NLI examples are unlikely to have appeared naturally in an unsupervised training set and are thus awkwardly phrased as a continuation of a sentence. For FLAN, we phrase NLI as the more natural question "Does <premise> mean that <hypothesis>?", achieving much higher performance.
+
+Reading comprehension. On reading comprehension, where models are asked to answer a question about a provided passage, FLAN outperforms baselines for MultiRC (Khashabi et al., 2018) and OBQA (Mihaylov et al., 2018). On BoolQ (Clark et al., 2019a), FLAN outperforms GPT-3 by a large margin, though LaMDA-PT already achieves high performance on BoolQ.
+
+Closed-book QA. For closed-book QA, which asks models to answer questions about the world without access to specific information containing the answer, FLAN outperforms GPT-3 on all four datasets. Compared to GLaM, FLAN has better performance on ARC-e and ARC-c (Clark et al., 2018), and slightly lower performance on NQ (Lee et al., 2019; Kwiatkowski et al., 2019) and TQA (Joshi et al., 2017).
+
+Translation. Similar to GPT-3, the training data for LaMDA-PT is around 90\% English and includes some text in other languages that was not specifically used to train the model to perform machine translation. We also evaluate FLAN's performance on machine translation for the three datasets evaluated in the GPT-3 paper: French-English from WMT'14 (Bojar et al., 2014), and German-
+
+English and Romanian-English from WMT' 16 (Bojar et al., 2016). Compared with GPT-3, FLAN outperforms zero-shot GPT-3 for all six evaluations, though it underperforms few-shot GPT-3 in most cases. Similar to GPT-3, FLAN shows strong results for translating into English and compares favorably against supervised translation baselines. Translating from English into other languages, however, was relatively weaker, as might be expected given that FLAN uses an English sentencepiece tokenizer and that the majority of pretraining data is English.
+
+Additional tasks. Although we see strong results for the above task clusters, one limitation with instruction tuning is that it does not improve performance for many language modeling tasks (e.g., commonsense reasoning or coreference resolution tasks formulated as sentence completions). For seven commonsense reasoning and coreference resolution tasks (see Table 2 in the Appendix), FLAN only outperforms LaMDA-PT on three of the seven tasks. This negative result indicates that when the downstream task is the same as the original language modeling pre-training objective (i.e., in cases where instructions are largely redundant), instruction tuning is not useful. Finally, we report results for sentiment analysis, paraphrase detection, and struct-to-text, as well as additional datasets for which GPT-3 results are not available, in Table 2 and Table 1 in the Appendix. Generally, zero-shot FLAN outperforms zero-shot LaMDA-PT and is comparable with or better than few-shot LaMDA-PT.
+

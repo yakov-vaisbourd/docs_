@@ -1,0 +1,12 @@
+# B Effective Conditioning
+
+To evaluate the hypothesis that probability mass is heavily concentrated and conditioning significantly narrows the likely generation space, we empirically study the characteristics of the output distributions and each generation step. We use the Llama SFT model used for the HH experiments in Results section.
+
+Probability Mass Concentration Figure 6 (Right) plots the total probability mass concentrated in the top \{1, 16, 32, 64\} tokens. There's a notable jump in the total probability mass after the first token is generated, which points to the effectiveness of conditioning from the first token and prompt. From that point on, a significant ( $\sim 60 \%$ ) portion of probability mass is put on only the single most probable token at each step, with more than ~ 90\% of the total mass being concentrated on the top 16 tokens, with diminishing increases that point for the top 32 \& 64 tokens. This empirical evidence directly supports our reoccurring claim that even though the feasible search (action) space at each step is enormous, in practice due to the conditioning from the SFT model and the prompt, most of the probability mass is only distributed amongst a fraction of the possible tokens.
+
+Low Entropy Figure 6 (Left) plots the Normalized Entropy \(\hat{H}(X)=\frac{H(X)}{H_{\text {max }}(X)}\), where \(H_{\text {max }}(X)\) is the entropy of the uniform distribution under the vocabulary-size. Similar to the jump in probability mass in Figure 6 right, as expected, the biggest the drop in entropy occurs right after the first token is generated and only slightly rises up to the end of the generation and is consistently low. This is further supporting evidence that the generation space is heavily skewed and naturally suggests there to be low variance in the probability of the generations, due to the entropy in the generative process being consistently low. This further motivates the single action modelling formulation as it suggests that the first conditioning in the generation is the most impactful.
+
+![Figure](./REINFORCE_leave_1_out_images/7b6ccb24-aeaf-4405-a575-200815561112-16_696_1568_1400_248.jpg)
+
+**Figure 6: Effect of Conditioning The highest drop in entropy and increase in concentration of probability mass occurs after generating the first token. Left: Normalized Entropy Right: Total probability mass concentrated in the Top \{1, 16, 32, 64\** tokens. Probability mass is consistently concentrated on a very small number of tokens when compared to the vocabsize of 32k)}
+

@@ -1,0 +1,10 @@
+# A FLARE Implementation Details
+
+FLARE $_{\text {instruct }}$ implementation details We found that LMs can effectively combine retrieval and downstream task-related skills and generate meaningful search queries while performing the task. However, there are two issues: (1) LMs tend to generate fewer search queries than necessary. (2) Generating excessive search queries can disrupt answer generation and adversely affect performance. We address these issues using two methods respectively. First, we increase the logit of the token "[" by 2.0 to improve the chances of LMs generating "[Search(query)]". Second, whenever LMs generate a search query, we use it to retrieve relevant information, promptly remove it from the generation, and generate the next few tokens while forbidding "[" by adding a large negative value to the logit of "[".
+
+The initial query of FLARE. FLARE starts with the user input $\boldsymbol{x}$ as the initial query to retrieve documents to generate the first sentence \(\hat{\boldsymbol{s}}_{1}=\operatorname{LM}\left(\left[\mathcal{D}_{\boldsymbol{x}}, \boldsymbol{x}\right]\right)\) to bootstrap the iterative generation process. For the following steps, the temporary forward-looking sentence is generated without retrieved documents.
+
+Sentence tokenization. For each step $t$, we generate 64 tokens which are longer than most sentences, and use NLTK sentence tokenizer ${ }^{5}$ to extract the first sentence and discard the rest.
+
+Efficiency As shown in subsection 6.2, on average retrieval is triggered for 30\% ~ 60\% of sentences depending on downstream tasks. In comparision, KNN-LM (Khandelwal et al., 2020) retrieves every token, RETRO or IC-RALM (Borgeaud et al., 2022; Ram et al., 2023) retrievers every 4~32 tokens, and IRCoT (Trivedi et al., 2022) retrieves every sentence. Compared to single-time retrieval, however, interleaving retrieval and generation with a naive implementation indeed increases overheads, which we discuss in the limitation section (section 9).
+
