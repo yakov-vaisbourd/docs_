@@ -1,0 +1,60 @@
+% ===========================================================================
+%  Policy Optimization: From CPI to LLMs --- companion notes to the RL decks
+%  Source decks: ../pres_part1/rl_pres_part1.tex, ../pres_part2/rl_pres_part2.tex
+%  Build (from this folder): pdflatex rl_notes.tex  (twice, for the TOC)
+% ===========================================================================
+\documentclass[11pt]{article}
+
+% The style file lives in ../styles/ (same trick as the decks).
+\makeatletter
+\def\input@path{{../styles/}}
+\makeatother
+\usepackage{document-style}
+\graphicspath{{../pres_part2/resources/}}
+
+\usepackage{mathtools}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{multicol}
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,decorations.pathreplacing,decorations.pathmorphing,shapes.geometric}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{fillbetween}
+\usepackage[most]{tcolorbox}
+\usepackage{contour}
+\contourlength{1.2pt}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlist{itemsep=2pt, topsep=3pt, parsep=0pt}
+\renewcommand{\arraystretch}{1.25}
+
+\input{parts/00_macros}
+
+\title{\textbf{Policy Optimization: From CPI to LLMs}\\[4pt]
+  \large Conservative updates, trust regions, advantage estimation, clipping,\\
+  and preference optimization --- companion notes to the seminar decks}
+\author{Yakov}
+\date{November 2026}
+
+\begin{document}
+\maketitle
+
+\input{parts/00_howto}
+
+\tableofcontents
+\clearpage
+
+\input{parts/01_cpi}
+\input{parts/02_trpo}
+\input{parts/03_gae}
+\input{parts/04_ppo}
+\input{parts/05_llm}
+
+\clearpage
+\appendix
+\input{parts/06_appendix}
+
+\end{document}

@@ -1,0 +1,83 @@
+% ===========================================================================
+%  How to read these notes
+% ===========================================================================
+\section*{How to read these notes}
+\addcontentsline{toc}{section}{How to read these notes}
+
+These notes follow the two seminar decks and keep the same storyline. They add explanations and derivations; later we decide what goes on the slides.
+
+\begin{pair}
+\begin{warmbox}[title={Warm (copper)}]
+\small
+\begin{itemize}
+  \item \textbf{Part I:} approximate \textbf{value-function} methods.
+  \item \textbf{Later:} lane \textbf{A} --- \emph{how far may I step?} (mixture step, trust region, clip).
+  \item \textbf{GAE / LLMs:} the value side (critic, reward model).
+\end{itemize}
+\end{warmbox}
+\begin{coolbox}[title={Cool (blue)}]
+\small
+\begin{itemize}
+  \item \textbf{Part I:} \textbf{policy-gradient} methods.
+  \item \textbf{Later:} lane \textbf{B} --- \emph{where do I learn?} (restart distribution $\mu$).
+  \item \textbf{LLMs:} the policy being trained.
+\end{itemize}
+\end{coolbox}
+\end{pair}
+
+\textbf{Box types}
+
+\begin{pair}[3]
+\begin{defbox}{name}\small a definition\end{defbox}
+\begin{thmbox}{Theorem}\small a result from a paper\end{thmbox}
+\begin{keybox}\small the take-away\end{keybox}
+\begin{warnbox}\small what it does not do\end{warnbox}
+\begin{algbox}{name}\small the steps\end{algbox}
+\begin{notebox}\small a remark or intuition\end{notebox}
+\end{pair}
+
+\textbf{The storyline at a glance}
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize, >=Stealth,
+    p/.style={rectangle, rounded corners=3pt, line width=0.7pt, text width=2.05cm,
+      align=center, minimum height=1.2cm, inner sep=3pt}]
+  \node[p, cbox=AtlasWarm] (cpi) at (0,0) {\textbf{CPI} (2002)\\ conservative mixture\\ + restarts $\mu$};
+  \node[p, cbox=AtlasCool] (trpo) at (2.55,0) {\textbf{TRPO} (2015)\\ KL trust region\\ for any $\pi_\theta$};
+  \node[p, cbox=AtlasCool] (gae) at (5.1,0) {\textbf{GAE} (2015)\\ critic + $\lambda$\\ for $\hat A_t$};
+  \node[p, cbox=AtlasCool] (ppo) at (7.65,0) {\textbf{PPO} (2017)\\ clipped ratio,\\ first order};
+  \node[p, cbox=AtlasSlate] (llm) at (10.2,0) {\textbf{LLMs}\\ RLHF, DPO,\\ GRPO, RLOO};
+  \foreach \a/\b in {cpi/trpo, trpo/gae, gae/ppo, ppo/llm} \draw[->, thick, AtlasSlate] (\a) -- (\b);
+  \node[font=\scriptsize, NoteGray] at (2.55,-1.0) {Part II};
+  \node[font=\scriptsize, NoteGray] at (0,-1.0) {Part I};
+  \node[font=\scriptsize, NoteGray] at (5.1,-1.0) {Part III};
+  \node[font=\scriptsize, NoteGray] at (7.65,-1.0) {Part IV};
+  \node[font=\scriptsize, NoteGray] at (10.2,-1.0) {Part V};
+\end{tikzpicture}
+\end{center}
+
+\begin{notebox}
+\textbf{Two normalizations.} CPI (Part I) uses \textbf{normalized} values: $V_\pi=(1-\gamma)\E[\sum_t\gamma^t r_t]\in[0,R]$, and $d_{\pi,\mu}$ sums to 1.
+TRPO, GAE and PPO use \textbf{unnormalized} returns $\eta=\E[\sum_t\gamma^t r_t]$ and visitations $\rho_\pi$. Constants in the bounds differ by factors of $(1-\gamma)$.
+\end{notebox}
+
+\textbf{Sources} (local copies in \texttt{seminar/RL\_algos/papers/})
+
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{@{}l L l@{}}
+\toprule
+\textbf{Key} & \textbf{Paper} & \textbf{Part} \\
+\midrule
+K\&L 2002 & Kakade \& Langford, \emph{Approximately Optimal Approximate Reinforcement Learning} (ICML) & I \\
+TRPO & Schulman et al., \emph{Trust Region Policy Optimization} (ICML 2015) & II \\
+GAE & Schulman et al., \emph{High-Dimensional Continuous Control Using Generalized Advantage Estimation} (ICLR 2016) & III \\
+PPO & Schulman et al., \emph{Proximal Policy Optimization Algorithms} (arXiv 2017) & IV \\
+Human prefs & Christiano et al., \emph{Deep RL from Human Preferences} (NeurIPS 2017) & V \\
+InstructGPT & Ouyang et al., \emph{Training Language Models to Follow Instructions with Human Feedback} (NeurIPS 2022) & V \\
+DPO & Rafailov et al., \emph{Direct Preference Optimization} (NeurIPS 2023) & V \\
+DeepSeekMath & Shao et al., \emph{DeepSeekMath} --- introduces GRPO (arXiv 2024) & V \\
+RLOO & Ahmadian et al., \emph{Back to Basics: REINFORCE-Style Optimization \ldots} (ACL 2024) & V \\
+\bottomrule
+\end{tabularx}
+\end{center}

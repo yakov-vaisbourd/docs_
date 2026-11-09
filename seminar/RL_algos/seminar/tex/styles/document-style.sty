@@ -1,0 +1,103 @@
+% document-style.sty
+% Style file for academic documents (notes, literature reviews, reports)
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{document-style}[2024/01/01 Document style for LLM project]
+
+% Common commands (embedded to avoid path issues)
+\RequirePackage[table]{xcolor} % For rowcolors command with table option
+\newcommand{\red}[1]{\textcolor{red}{#1}}
+\newcommand{\green}[1]{\textcolor{green}{#1}}
+\newcommand{\blue}[1]{\textcolor{blue}{#1}}
+\newcommand{\orange}[1]{\textcolor{orange}{#1}}
+\newcommand{\yellow}[1]{\textcolor{yellow}{#1}}
+\newcommand{\purple}[1]{\textcolor{purple}{#1}}
+\newcommand{\brown}[1]{\textcolor{brown}{#1}}
+\newcommand{\gray}[1]{\textcolor{gray}{#1}}
+\newcommand{\lightgray}[1]{\textcolor{lightgray}{#1}}
+\newcommand{\darkgray}[1]{\textcolor{darkgray}{#1}}
+\newcommand{\black}[1]{\textcolor{black}{#1}}
+
+% Common packages for documents
+\RequirePackage[utf8]{inputenc}
+\RequirePackage{amsmath}
+\RequirePackage{amsfonts}
+\RequirePackage{amssymb}
+\RequirePackage{amsthm} % For theorem-like environments
+\RequirePackage{graphicx}
+\RequirePackage{float} % For [H] figure placement
+\RequirePackage{hyperref}
+\RequirePackage{booktabs} % For better table lines
+\RequirePackage{listings} % For code listings
+\RequirePackage{ulem} % For strikethrough (\sout) command
+\RequirePackage[left=1.5cm, right=1.5cm, top=2cm, bottom=2cm]{geometry} % Set narrower margins
+
+% Configure listings package for syntax highlighting and frames
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.95}
+
+\lstdefinestyle{pythonstyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    rulecolor=\color{black},
+    frameround=tttt
+}
+
+\lstset{style=pythonstyle}
+
+% Document-specific commands
+\newcommand{\documenttitle}[3]{%
+    \title{#1}
+    \author{#2}
+    \date{#3}
+}
+
+% Define colors
+\definecolor{blue}{rgb}{0.0, 0.0, 1.0}
+\definecolor{green}{rgb}{0.0, 0.5, 0.0}
+\definecolor{red}{rgb}{1.0, 0.0, 0.0}
+\definecolor{yellow}{rgb}{1.0, 1.0, 0.0}
+\definecolor{purple}{rgb}{0.5, 0.0, 0.5}
+\definecolor{orange}{rgb}{0.9, 0.4, 0.0}
+\definecolor{brown}{rgb}{0.5, 0.25, 0.0}
+\definecolor{gray}{rgb}{0.5, 0.5, 0.5}
+\definecolor{lightgray}{rgb}{0.9, 0.9, 0.9}
+\definecolor{darkgray}{rgb}{0.2, 0.2, 0.2}
+\definecolor{black}{rgb}{0.0, 0.0, 0.0}
+
+% Bibliography style command
+\newcommand{\addbib}[1]{%
+    \bibliographystyle{plain}
+    \bibliography{#1}
+}
+
+% Common document environments
+\newenvironment{research}{%
+    \begin{quote}
+    \textbf{Research Notes:}\\
+}{%
+    \end{quote}
+}
+
+% Theorem-like environments
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+\endinput

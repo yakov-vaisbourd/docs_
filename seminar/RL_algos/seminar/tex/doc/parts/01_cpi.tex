@@ -1,0 +1,1018 @@
+% ===========================================================================
+%  PART I --- CONSERVATIVE POLICY ITERATION (Kakade & Langford, 2002)
+% ===========================================================================
+\clearpage
+\part{Conservative Policy Iteration}
+
+\partintro{\textbf{The question of Part I:} approximate methods give no guarantee that an update helps.
+CPI adds two fixes --- a \textbf{conservative (mixture) step} and a \textbf{restart distribution} $\mu$ --- and gets answers to three questions: what improves, how to verify it, and how good the result is.}
+
+% ---------------------------------------------------------------------------
+\section{Setting and notation}
+% ---------------------------------------------------------------------------
+
+\paper{Approximately Optimal Approximate Reinforcement Learning}
+  {Kakade \& Langford}{ICML 2002}
+  {Conservative Policy Iteration (CPI)}
+  {approximately\_optimal\_approximate\_RL.md}
+
+\subsection{Assumptions}
+
+A finite MDP $(S, D, A, \mathcal{R}, P)$:
+
+\begin{enumerate}
+  \item \textbf{Finite} state and action spaces: $|S|, |A| < \infty$. \hfill {\footnotesize\color{NoteGray}TRPO later allows continuous spaces}
+  \item \textbf{Bounded rewards}: $\mathcal{R}: S \times A \to [0, R]$.
+  \item \textbf{Discounted}: $\gamma \in [0,1)$.
+  \item \textbf{Unknown dynamics}: $P(s';s,a)$ is not given; we can only \textbf{sample} transitions (model-free).
+  \item \textbf{Start-state distribution} $D$. The goal is
+  \begin{gather*}
+    \eta_D(\pi) = \E_{s_0\sim D}\big[V_\pi(s_0)\big].
+  \end{gather*}
+\end{enumerate}
+
+\begin{notebox}
+Finiteness does not help by itself: $P$ is unknown, so $V_\pi$ can only be \emph{estimated} from rollouts, never computed by dynamic programming. The paper also assumes an approximate greedy policy chooser (a black box); it enters with the algorithm (\S\ref{sec:cpi-alg}).
+\end{notebox}
+
+\subsection{Why the start distribution $D$ matters}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[notes, width=8.5cm, height=5.2cm, ymin=0, ymax=3.8, xmin=0, xmax=6.3,
+    xtick={0.5,1.5,...,5.5}, xticklabels={$s_1$,$s_2$,$s_3$,$s_4$,$s_5$,$s_6$},
+    ytick=\empty, ylabel={$V_\pi(s)$}, legend pos=outer north east, legend style={font=\scriptsize}]
+  \addplot[AtlasAccent, very thick, dashed, smooth] coordinates {(0.5,3.2)(1.5,3.3)(2.5,3.15)(3.5,3.25)(4.5,3.3)(5.5,3.2)};
+  \addlegendentry{$\pi^*$}
+  \addplot[AtlasWarm, very thick, smooth] coordinates {(0.5,2.9)(1.5,2.7)(2.5,2.3)(3.5,1.8)(4.5,1.5)(5.5,1.4)};
+  \addlegendentry{$\pi_1$}
+  \addplot[AtlasSlate, very thick, smooth] coordinates {(0.5,1.5)(1.5,1.7)(2.5,2.0)(3.5,2.4)(4.5,2.8)(5.5,2.9)};
+  \addlegendentry{$\pi_2$}
+  \addplot[ybar, bar width=0.5, fill=AtlasWarm!40, draw=none, line width=0pt]
+    coordinates {(0.5,0.85)(1.5,0.65)(2.5,0.3)(3.5,0.15)(4.5,0.08)(5.5,0.05)};
+  \addlegendentry{$D(s)$}
+\end{axis}
+\end{tikzpicture}
+\end{center}
+
+\begin{pair}[3]
+\begin{slatebox}[title={Exact}]
+\small $\pi^*$ is on top at \textbf{every} state $\Rightarrow$ $D$ is irrelevant.
+\end{slatebox}
+\begin{warmbox}[title={Approximate}]
+\small Curves \textbf{cross}: a restricted class $\{\pi_\theta\}$ and limited data.
+\end{warmbox}
+\begin{coolbox}[title={Rank by $D$}]
+\small $\eta_D(\pi)=\sum_s D(s)V_\pi(s)$. Here $\pi_1$ wins.
+\end{coolbox}
+\end{pair}
+
+\begin{keybox}
+$D$ comes from the \textbf{application} (robot start poses, game openings, user prompts). It is fixed by the problem, like $\mathcal R$ and $P$, and it \textbf{defines the goal}. The restart distribution $\mu$ (later) is different: we choose it, and it only shapes the \emph{learning signal}.
+\end{keybox}
+
+Two reasons why the curves cross:
+\begin{enumerate}
+  \item \textbf{Representation} --- $\pi^*$ may not be in the class. Persists with unlimited data.
+  \item \textbf{Estimation} --- even in the tabular case CPI stops with $\OPT(\PA_{\pi,\mu})<2\varepsilon$ (Thm.~4.4); the leftover error is uneven across states (larger where samples are rare). A finite-data effect.
+\end{enumerate}
+
+\src{K\&L Sec.~2--3. ``We only consider the case where the goal of the agent is to maximize the $\gamma$ discounted average reward from the starting state distribution $D$.''}
+
+\subsection{Notation: $V$, $Q$, $A$, $d$, $\eta$}
+
+Five quantities, each built on the previous one.
+
+\begin{defbox}{value, action value, advantage (normalized)}
+\begin{gather*}
+  V_\pi(s) = (1-\gamma)\,\E\Big[\textstyle\sum_{t} \gamma^t \mathcal{R}(s_t,a_t) \,\Big|\, \pi, s_0{=}s\Big] \\
+  Q_\pi(s,a) = (1-\gamma)\mathcal{R}(s,a) + \gamma\,\E_{s'}\big[V_\pi(s')\big], \qquad V_\pi(s) = \E_{a\sim\pi(\cdot|s)}\big[Q_\pi(s,a)\big] \\
+  A_\pi(s,a) = Q_\pi(s,a) - V_\pi(s)
+\end{gather*}
+\end{defbox}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[notes, name=v, width=6.4cm, height=4.4cm, ybar, bar width=0.45, ymin=0, ymax=1.35,
+    xtick={0,...,4}, xticklabels={$t{=}0$,1,2,3,4}, ytick=\empty,
+    title={\small Value: a weighted average of rewards}]
+  \addplot[fill=AtlasAccent!55, draw=none] coordinates {(0,1.2)(1,0.72)(2,0.43)(3,0.26)(4,0.16)};
+  \node[font=\scriptsize, AtlasAccent] at (axis cs:2.6,1.05) {weights $(1-\gamma)\gamma^t$};
+\end{axis}
+\begin{axis}[notes, at={(v.east)}, anchor=west, xshift=1.2cm, width=6.4cm, height=4.4cm,
+    ymin=0, ymax=3.6, xmin=0.4, xmax=4.6, xtick={1,...,4}, xticklabels={$a_1$,$a_2$,$a_3$,$a_4$},
+    ytick=\empty, title={\small Advantage: the gap to $V_\pi(s)$}]
+  \addplot[ybar, bar width=0.5, fill=AtlasSlate!35, draw=none] coordinates {(1,3.4)(2,2.76)(3,1.96)(4,3.08)};
+  \addplot[AtlasAccent, very thick, dashed, domain=0.5:4.5] {2.65};
+  \node[font=\scriptsize, AtlasAccent, anchor=south] at (axis cs:2.5,3.2) {$V_\pi(s)$};
+  \draw[AtlasCool, line width=2.5pt] (axis cs:1,2.65) -- (axis cs:1,3.4);
+  \draw[AtlasCool, line width=2.5pt] (axis cs:2,2.65) -- (axis cs:2,2.76);
+  \draw[AtlasCool, line width=2.5pt] (axis cs:4,2.65) -- (axis cs:4,3.08);
+  \draw[AtlasWarm, line width=2.5pt] (axis cs:3,2.65) -- (axis cs:3,1.96);
+\end{axis}
+\end{tikzpicture}
+\end{center}
+
+\begin{itemize}
+  \item \textbf{Value.} The weights $(1-\gamma)\gamma^t$ sum to 1, so $V_\pi$ is an \emph{average} of rewards: $V\in[0,R]$.
+  \item \textbf{Action value.} Take $a$ first, then follow $\pi$. $V_\pi$ is the $\pi$-weighted average of the bars.
+  \item \textbf{Advantage.} Gaps to the $V$ line. Weighted by $\pi$ they cancel: $\E_{a\sim\pi}[A_\pi(s,a)]=0$.
+        A different $\pi'$ that favors the {\color{AtlasCool}\textbf{positive}} gaps gets $\E_{a\sim\pi'}[A_\pi(s,a)]>0$ --- the seed of the \emph{policy advantage} (\S\ref{sec:pa}).
+\end{itemize}
+
+\begin{defbox}{discounted visitation and objective}
+\begin{gather*}
+  d_{\pi,D}(s) = (1-\gamma)\textstyle\sum_{t} \gamma^t \Pr(s_t = s;\, \pi, D), \qquad
+  \eta_D(\pi) = \E_{s\sim D}\big[V_\pi(s)\big] = \E_{s\sim d_{\pi,D},\,a\sim\pi}\big[\mathcal R(s,a)\big]
+\end{gather*}
+\end{defbox}
+
+\begin{pair}
+\begin{coolbox}[title={$d_{\pi,D}$: the whole trajectory}]
+\small Where $\pi$ spends its time when started from $s_0\sim D$; early steps weigh more.
+\end{coolbox}
+\begin{warmbox}[title={$D$: only $s_0$}]
+\small The distribution of the first state. Easy to confuse with $d_{\pi,D}$.
+\end{warmbox}
+\end{pair}
+
+\begin{notebox}
+\begin{itemize}[leftmargin=*]
+  \item Unnormalized visitation: $\rho_\pi=(I-\gamma P_\pi^\top)^{-1}D$ --- linear in $D$, nonlinear in $\pi$.
+  \item Training is on-policy: $\pi$ shapes the visitation used for the next update --- a \textbf{feedback loop}, not a fixed reweighting.
+  \item TRPO drops the $(1-\gamma)$ factor; this changes the constants in its bounds.
+\end{itemize}
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section{Three questions for any approximate method}
+% ---------------------------------------------------------------------------
+
+\begin{tcolorbox}[notes, colback=GoodGreen!5, colframe=GoodGreen, colbacktitle=GoodGreen, title={The three questions (K\&L Sec.~3)}]
+\begin{enumerate}[label=\textbf{Q\arabic*}]
+  \item Is there a \textbf{performance measure} that is guaranteed to \textbf{improve at every step}?
+  \item How hard is it to \textbf{verify} that a given update improves this measure?
+  \item What \textbf{performance level} is reached after a \textbf{reasonable number} of updates?
+\end{enumerate}
+\end{tcolorbox}
+
+{\small Not ``what is the asymptotic policy?'' --- only policies reachable in reasonable time.}
+
+\begin{center}
+\small
+\begin{tabular}{l c c c}
+\toprule
+ & \textbf{Q1} improve & \textbf{Q2} verify & \textbf{Q3} performance \\
+\midrule
+{\color{AtlasWarm}\textbf{Approximate value functions}} & weak & weak & weak \\
+{\color{AtlasCool}\textbf{Policy gradients}} & \textbf{good} & poor & poor \\
+{\color{GoodGreen}\textbf{CPI}} & \cmark & \cmark & \cmark{} (up to a mismatch factor) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The next two sections show why the first two rows look like this (\textbf{Gap 1} and \textbf{Gap 2}).
+
+% ---------------------------------------------------------------------------
+\section{Gap 1: approximate value functions}
+% ---------------------------------------------------------------------------
+
+\subsection{Reminder: approximate policy iteration}
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, b/.style={fl, cbox=AtlasWarm, minimum height=1.05cm}]
+  \node[b] (pi) at (0,0) {policy\\ $\pi$};
+  \node[b] (q) at (4.4,0) {approximate values\\ $\tilde Q(s,a)\approx Q_\pi(s,a)$};
+  \node[b] (g) at (9.5,0) {greedy policy\\ $\pi'(s)=\arg\max_a \tilde Q(s,a)$};
+  \draw[->, thick, AtlasWarm] (pi) -- node[above, font=\scriptsize]{evaluate} node[below, font=\scriptsize]{from samples} (q);
+  \draw[->, thick, AtlasWarm] (q) -- node[above, font=\scriptsize]{improve} (g);
+  \draw[->, thick, AtlasWarm] (g.south) -- ++(0,-0.55) -| (pi.south) node[pos=0.25, below, font=\scriptsize, text=black]{$\pi\leftarrow\pi'$, repeat};
+\end{tikzpicture}
+\end{center}
+
+Exact policy iteration, with $Q_\pi$ replaced by an \textbf{estimate} $\tilde Q$.
+
+\begin{warmbox}[title={Example: Q-learning with a function approximator $\tilde Q_w$}]
+\begin{gather*}
+  w \leftarrow w + \alpha\,\big(y_t - \tilde Q_w(s_t,a_t)\big)\,\nabla_w \tilde Q_w(s_t,a_t), \qquad
+  y_t = (1-\gamma)\,r_t + \gamma \max_{a'} \tilde Q_w(s_{t+1},a')
+\end{gather*}
+\begin{itemize}
+  \item The $\max$ is the greedy step: evaluate and improve happen \textbf{together}.
+  \item Strictly, this is approximate \emph{value} iteration; with a neural network it is DQN.
+  \item The target $y_t$ is one choice of many (next subsection).
+\end{itemize}
+\end{warmbox}
+
+\subsection{How is $\tilde Q$ estimated? From TD(0) to Monte Carlo}
+
+\begin{center}
+\begin{tikzpicture}[x=1.05cm, y=0.9cm, >=Stealth,
+    st/.style={circle, fill=AtlasSlate, minimum size=0.16cm, inner sep=0pt},
+    real/.style={AtlasWarm, line width=2.4pt, line cap=round},
+    boot/.style={circle, draw=AtlasWarm, very thick, fill=white, minimum size=0.32cm, inner sep=0pt},
+    lab/.style={font=\scriptsize, anchor=east}]
+  \foreach \i/\n in {0/t, 1/t{+}1, 2/t{+}2, 3/t{+}3, 4/t{+}4} {
+    \node[st] (s\i) at (\i,0) {};
+    \node[font=\tiny, above=2pt of s\i] {$s_{\n}$};}
+  \foreach \i/\j/\r in {0/1/t, 1/2/t{+}1, 2/3/t{+}2, 3/4/t{+}3}
+    \draw[->, AtlasSlate, shorten <=2pt, shorten >=2pt] (s\i) -- node[below=1pt, font=\tiny]{$r_{\r}$} (s\j);
+  \draw[->, AtlasSlate, shorten <=2pt] (s4) -- (5.0,0) node[right, font=\scriptsize]{$\cdots$};
+  \node[lab] at (-0.25,-1.0) {TD(0)};
+  \draw[real] (0,-1.0) -- (1,-1.0); \node[boot] at (1,-1.0) {};
+  \node[lab] at (-0.25,-1.7) {$n=3$};
+  \draw[real] (0,-1.7) -- (3,-1.7); \node[boot] at (3,-1.7) {};
+  \node[lab] at (-0.25,-2.4) {MC};
+  \draw[real] (0,-2.4) -- (5.3,-2.4); \draw[AtlasWarm, thick] (5.3,-2.55) -- (5.3,-2.25);
+  \node[font=\scriptsize, anchor=west] at (6.0,-1.0) {\tikz\draw[real] (0,0) -- (0.4,0); real rewards};
+  \node[font=\scriptsize, anchor=west] at (6.0,-1.7) {\tikz\node[boot] {}; bootstrap from $\tilde Q$};
+  \draw[<->, thick, AtlasSlate] (0,-3.2) -- (5.3,-3.2);
+  \node[font=\scriptsize, below] at (0,-3.25) {$\lambda=0$};
+  \node[font=\scriptsize, below] at (5.3,-3.25) {$\lambda=1$};
+  \node[font=\scriptsize, align=center] at (1.3,-4.15) {low variance, biased by $\tilde Q$};
+  \node[font=\scriptsize, align=center] at (4.4,-4.15) {unbiased, high variance};
+\end{tikzpicture}
+\end{center}
+
+\begin{center}
+\small
+\begin{tabular}{l l l}
+\toprule
+\textbf{Target} & \textbf{Formula} & \textbf{Trade-off} \\
+\midrule
+TD(0) & $y_t^{(1)} = (1-\gamma)\,r_t + \gamma\,\tilde Q(s_{t+1},a_{t+1})$ & one reward, then trust $\tilde Q$ \\
+$n$-step & $y_t^{(n)} = (1-\gamma)\sum_{k=0}^{n-1}\gamma^k r_{t+k} + \gamma^n\,\tilde Q(s_{t+n},a_{t+n})$ & in between \\
+Monte Carlo & $y_t^{(\infty)} = (1-\gamma)\sum_{k\ge0}\gamma^k r_{t+k}$ & only real rewards; wait for the end \\
+TD($\lambda$) & $y_t^{\lambda} = (1-\lambda)\sum_{n\ge1}\lambda^{n-1}\,y_t^{(n)}$ & average over all $n$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{notebox}
+The weights $(1-\lambda)\lambda^{n-1}$ sum to 1: $\lambda=0$ gives TD(0), $\lambda\to1$ gives Monte Carlo. The \textbf{same $\lambda$ trade-off returns for advantages} in GAE (Part III). Background from Sutton \& Barto, Ch.~6, 7, 12; not in K\&L.
+\end{notebox}
+
+\subsection{The bound: no improvement guarantee}
+
+Measure the approximation error \textbf{everywhere} ($\ell_\infty$):
+\begin{gather*}
+  \varepsilon = \max_s \big|\tilde V(s) - V_\pi(s)\big|.
+\end{gather*}
+
+\begin{thmbox}{Approximate greedy step (Bertsekas \& Tsitsiklis; K\&L Eq.~3.1)}
+If $\pi'$ is greedy with respect to $\tilde V$, then
+\begin{gather*}
+  V_{\pi'}(s) \;\ge\; V_\pi(s) - \frac{2\gamma\varepsilon}{1-\gamma} \qquad \forall s.
+\end{gather*}
+\end{thmbox}
+
+\begin{minipage}[c]{0.5\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=7.2cm, height=4.6cm, xmin=0, xmax=5.6, ymin=0.5, ymax=3.2,
+    xtick=\empty, ytick=\empty, xlabel={$s$}]
+  \addplot[name path=top, AtlasSlate, very thick, smooth] coordinates {(0,2.0)(1,2.4)(2,2.2)(3,2.7)(4,2.5)(5,2.8)};
+  \addplot[name path=bot, BadRed, thick, dashed, smooth] coordinates {(0,0.95)(1,1.35)(2,1.15)(3,1.65)(4,1.45)(5,1.75)};
+  \addplot[BadRed!12] fill between[of=top and bot];
+  \addplot[AtlasWarm, very thick, smooth] coordinates {(0,2.3)(1,1.9)(2,2.5)(3,2.1)(4,2.8)(5,2.2)};
+  \node[font=\scriptsize, AtlasSlate, anchor=east] at (axis cs:0,2.0) {$V_\pi$};
+  \node[font=\scriptsize, AtlasWarm] at (axis cs:4.0,3.0) {$V_{\pi'}$};
+  \draw[decorate, decoration={brace, amplitude=4pt, mirror}, thick] (axis cs:5.15,1.75) -- (axis cs:5.15,2.8)
+    node[midway, right=4pt, font=\scriptsize]{$\frac{2\gamma\varepsilon}{1-\gamma}$};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.46\linewidth}
+\begin{itemize}
+  \item $V_{\pi'}$ may sit anywhere above the dashed line --- \textbf{also below} $V_\pi$.
+  \item Only ``won't get \textbf{much worse}''; never ``gets better''.
+  \item The $\ell_\infty$ requirement is strong: one badly estimated state is enough to make the bound loose.
+\end{itemize}
+\end{minipage}
+
+\begin{warnbox}
+Weak answers to all three questions: no measure is guaranteed to improve (Q1), so verifying an update (Q2) has nothing to check against, and nothing bounds the performance after a number of updates (Q3).
+\end{warnbox}
+
+\subsection{The bound is tight: a two-state example}
+
+\begin{minipage}[c]{0.44\linewidth}
+\centering
+\begin{tikzpicture}[>=Stealth, st/.style={circle, draw=AtlasSlate, very thick, minimum size=0.95cm, font=\small}]
+  \node[st] (s) at (0,0) {$s$};
+  \node[st, draw=GoodGreen, fill=GoodGreen!10] (g) at (3.4,0) {$G$};
+  \draw[->, thick, AtlasSlate] (s) -- node[above, font=\scriptsize]{go, $r=0$} (g);
+  \draw[->, thick, AtlasSlate] (s) edge[loop above, looseness=6] node[above, font=\scriptsize]{stay, $r=0$} (s);
+  \draw[->, thick, GoodGreen] (g) edge[loop above, looseness=6] node[above, font=\scriptsize]{$r=c$} (g);
+  \node[font=\scriptsize, AtlasSlate, below=3pt of s] {$V_\pi = \tfrac{\gamma c}{1-\gamma}$};
+  \node[font=\scriptsize, GoodGreen, below=3pt of g] {$V_\pi = \tfrac{c}{1-\gamma}$};
+  \node[font=\scriptsize, BadRed, below=22pt of s] {$\tilde V = V_\pi + \varepsilon$};
+  \node[font=\scriptsize, BadRed, below=22pt of g] {$\tilde V = V_\pi - \varepsilon$};
+\end{tikzpicture}\\[2pt]
+{\scriptsize $\pi$ = go. Set $c=2\varepsilon$. Unnormalized values.}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.53\linewidth}
+\begin{enumerate}
+  \item $\pi$ goes to $G$ and collects $c$ forever.
+  \item $\tilde V$ is off by $\varepsilon$: too \textbf{high} at $s$, too \textbf{low} at $G$.
+  \item Greedy w.r.t.\ $\tilde V$ at $s$ compares
+  \begin{gather*}
+    \underbrace{\gamma\big(V_\pi(s)+\varepsilon\big)}_{\text{stay}} \;=\; \underbrace{\gamma\big(V_\pi(G)-\varepsilon\big)}_{\text{go}}
+  \end{gather*}
+  a tie, since $V_\pi(G)-V_\pi(s)=c=2\varepsilon$. So $\pi'$ may stay forever: $V_{\pi'}(s)=0$.
+\end{enumerate}
+\end{minipage}
+
+\begin{warnbox}[title={The loss equals the bound}]
+At $s$: $V_\pi(s)-V_{\pi'}(s) = \frac{\gamma c}{1-\gamma} = \frac{2\gamma\varepsilon}{1-\gamma}$. \quad At $G$: one action only, so the loss is $0$.\\
+Two errors of size $\varepsilon$, in opposite directions, make the greedy policy stop moving; the $\frac{1}{1-\gamma}$ sums the lost reward over the horizon.
+\end{warnbox}
+
+\begin{notebox}
+Our own minimal example. With $c$ slightly below $2\varepsilon$ staying is strictly preferred and the loss gets arbitrarily close to the bound. B\&T (\emph{Neuro-Dynamic Programming}, Ex.~6.4) show tightness of the related API bound $\limsup_k\|V_{\pi_k}-V^*\|_\infty\le\frac{2\gamma\varepsilon}{(1-\gamma)^2}$; the one-step form is due to Singh \& Yee (1994).
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section{Gap 2: policy gradients}
+% ---------------------------------------------------------------------------
+
+\subsection{Reminder: policy gradient methods}
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, b/.style={fl, cbox=AtlasCool, minimum height=1.05cm}]
+  \node[b] (pi) at (0,0) {policy\\ $\pi_\theta,\ \theta\in\mathbb{R}^m$};
+  \node[b] (r) at (4.6,0) {rollouts\\ $s_0\sim D,\ a_t\sim\pi_\theta$};
+  \node[b] (g) at (9.2,0) {gradient estimate\\ $\hat g\approx\nabla_\theta\,\eta_D$};
+  \draw[->, thick, AtlasCool] (pi) -- node[above, font=\scriptsize]{act} (r);
+  \draw[->, thick, AtlasCool] (r) -- node[above, font=\scriptsize]{estimate} (g);
+  \draw[->, thick, AtlasCool] (g.south) -- ++(0,-0.55) -| (pi.south) node[pos=0.25, below, font=\scriptsize, text=black]{$\theta\leftarrow\theta+\alpha\,\hat g$, repeat};
+\end{tikzpicture}
+\end{center}
+
+\begin{thmbox}{Policy gradient theorem (Sutton et al.; normalized)}
+\begin{gather*}
+  \nabla_\theta\, \eta_D = \frac{1}{1-\gamma}\sum_{s,a} d_{\pi,D}(s)\, \nabla_\theta \pi(a;s)\, Q_\pi(s,a)
+\end{gather*}
+\end{thmbox}
+
+Small steps uphill on $\eta_D$ \emph{itself} $\Rightarrow$ a \textbf{good answer to Q1}.
+
+\begin{coolbox}[title={Example: REINFORCE with a Gibbs (softmax) policy}]
+\begin{gather*}
+  \pi_\theta(a;s) = \frac{e^{\theta_{sa}}}{\sum_b e^{\theta_{sb}}}, \qquad
+  \hat g \;\propto\; \sum_t \nabla_\theta \log \pi_\theta(a_t;s_t)\, \hat Q_t
+\end{gather*}
+$\hat Q_t$: the return observed after step $t$. The Gibbs class is the one of Example~2 below. Details: App.~\ref{app:gibbs}.
+\end{coolbox}
+
+\subsection{Policy gradient is stochastic gradient ascent}
+
+\begin{center}
+\small
+\begin{tabular}{r l l}
+\toprule
+ & {\color{AtlasSlate}\textbf{Stochastic gradient descent}} & {\color{AtlasCool}\textbf{Policy gradient}} \\
+\midrule
+{\color{NoteGray}objective} & $\min_w J(w)=\E_X[f(w,X)]$ & $\max_\theta \eta_D(\theta)=\E_{\tau\sim\pi_\theta}[R(\tau)]$ \\
+{\color{NoteGray}looking for} & $\nabla J(w)=0$ & $\nabla_\theta\eta_D(\theta)=0$ \\
+{\color{NoteGray}one sample} & $x_k\sim X$ & rollout $\tau_k$: $s_0\sim D$, $a_t\sim\pi_{\theta_k}$ \\
+{\color{NoteGray}update} & $w_{k+1}=w_k-a_k\nabla_w f(w_k,x_k)$ & $\theta_{k+1}=\theta_k+a_k\hat g_k$ \\
+{\color{NoteGray}noise} & $\eta_k=\nabla_w f(w_k,x_k)-\nabla J(w_k)$ & $\eta_k=\hat g_k-\nabla_\theta\eta_D(\theta_k)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{notebox}
+\textbf{The twist.} In SGD the distribution of $X$ does not depend on $w$. Here the trajectories come from $\pi_\theta$ itself, so $\nabla\eta_D\neq\E[\nabla R]$. The log-derivative trick (REINFORCE) still gives an \textbf{unbiased} $\hat g_k$ --- App.~\ref{app:logderiv}. Notation clash: $\eta_k$ (noise) is not $\eta_D$ (performance).
+\end{notebox}
+
+\subsection{What SGD theory guarantees}
+
+\textbf{Convergence conditions} (Robbins \& Monro, 1951) --- each has a role:
+
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{@{}l l L@{}}
+\toprule
+\textbf{Condition} & \textbf{Formula} & \textbf{Role} \\
+\midrule
+1.~Curvature & $0<c_1\le\nabla_w^2 f(w,X)\le c_2$ & one minimizer; bounds on the rate \\
+2.~Unbiased noise & $\E[\eta_k\mid\mathcal H_k]=0$ & steps point the right way on average \\
+3.~Finite variance & $\E[\eta_k^2\mid\mathcal H_k]<\infty$ & with 4, the summed noise stays finite \\
+4.~Step sizes & $\sum_k a_k=\infty$, \ $\sum_k a_k^2<\infty$ & reach any distance; e.g.\ $a_k=c/k$ \\
+\bottomrule
+\end{tabularx}
+\end{center}
+{\footnotesize\color{NoteGray}$\mathcal H_k$: the history so far, $w_0,x_0,\dots,x_{k-1}$. Under 1--4: $w_k\to w^*$ almost surely.}
+
+\textbf{Sample complexity} --- samples needed to be $\epsilon$-close with probability $\ge1-\delta$:
+\begin{gather*}
+  N(\epsilon,\delta) = \min\Big\{ N \in \mathbb{N} \;\Big|\; \mathbb{P}\big(\|w_k - w^*\| \le \epsilon\big) \ge 1-\delta \ \text{ for all } k \ge N \Big\}
+\end{gather*}
+
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{@{}l L@{}}
+\toprule
+\textbf{Setting} & \textbf{Guarantee} \\
+\midrule
+Convex, smooth & global optimum: $N(\epsilon,\delta)=O\big(\sigma^2/(c_1^2\epsilon^2\delta)\big)$ \hfill {\scriptsize\color{NoteGray}Nemirovski et al.\ 2009 + Markov} \\
+Non-convex, smooth & stationary point only: $\E\|\nabla J(w_R)\|\le\epsilon$ after $K=O(\sigma^2/\epsilon^4)$, $w_R$ a random iterate \hfill {\scriptsize\color{NoteGray}Ghadimi \& Lan 2013} \\
+{\color{AtlasCool}Non-convex, non-smooth} & {\color{AtlasCool}weaker still: near-stationary points, special classes --- \textbf{policy gradients with neural nets live here}} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{keybox}[title={What carries over}]
+The convex case shows \textbf{what drives} $N$: the noise $\sigma^2$ and the curvature $c_1$. More noise means more samples; flat regions are slow.
+\end{keybox}
+
+\subsection{The signal-to-noise reality}
+
+\begin{enumerate}
+  \item Finite variance is enough for convergence \emph{in the limit}.
+  \item In practice $N$ depends on the \textbf{signal-to-noise ratio}. Averaging $n$ samples leaves noise $\sigma/\sqrt n$; just to get the \emph{direction} right:
+  \begin{gather*}
+    n \gtrsim \sigma^2/\|\nabla J\|^2.
+  \end{gather*}
+  \item \textbf{Link to curvature.} Strong convexity gives $\|\nabla J(w)\|\ge c_1\|w-w^*\|$, so at distance $\epsilon$:
+  \begin{gather*}
+    n \gtrsim \sigma^2/(c_1\epsilon)^2 \qquad \text{(the convex-row $N$, without the $1/\delta$)}.
+  \end{gather*}
+  \item \textbf{Flat} ($c_1$ small) or $\|\nabla J\|\to0$: the noise dominates and $n$ becomes intractable.
+\end{enumerate}
+
+\begin{notebox}
+The theory's $1/c_1^2$ \emph{is} the signal-to-noise cost. The next two MDPs have an (almost) zero gradient: this picture, in RL.
+\end{notebox}
+
+\subsection{Example 1: exploration}
+\label{sec:gap2-ex1}
+
+\begin{center}
+\begin{tikzpicture}[st/.style={circle, draw=AtlasCool, thick, minimum size=0.75cm, font=\small},
+                    >=Stealth, node distance=1.15cm]
+  \node[st] (s1) {$1$};
+  \node[st, right=of s1] (s2) {$2$};
+  \node[st, right=of s2] (s3) {$3$};
+  \node[right=0.6cm of s3] (dots) {$\cdots$};
+  \node[st, right=0.6cm of dots, fill=GoodGreen!15, draw=GoodGreen] (sn) {$n$};
+  \foreach \a/\b in {s1/s2, s2/s3} {
+    \draw[->, AtlasCool] (\a) to[bend left=25] node[above, font=\scriptsize]{1 action} (\b);
+    \draw[->, AtlasSlate] (\b) to[bend left=25] node[below, font=\scriptsize]{2 actions} (\a);}
+  \draw[->, AtlasCool] (s3) to[bend left=25] (dots);
+  \draw[->, AtlasSlate] (dots) to[bend left=25] (s3);
+  \draw[->, AtlasCool] (dots) to[bend left=25] (sn);
+  \node[below=0.15cm of sn, font=\scriptsize, GoodGreen] {goal};
+\end{tikzpicture}
+\end{center}
+
+\begin{itemize}
+  \item Two actions move left, one moves right. Uniform random policy: expected time to the goal $= 3(2^n-n-1)\approx10^{15}$ for $n=50$.
+  \item Before reaching the goal every sensible gradient estimate is $\mathbf 0$: the right \emph{magnitude}, but \textbf{no direction}.
+  \item Importance sampling does not help: the weights would be exponentially large.
+\end{itemize}
+
+\subsection{Example 2: plateaus}
+
+\begin{minipage}[c]{0.36\linewidth}
+\centering
+\begin{tikzpicture}[st/.style={circle, draw=AtlasCool, thick, minimum size=0.9cm}, >=Stealth]
+  \node[st] (i) at (0,0) {$i$};
+  \node[st] (j) at (2.8,0) {$j$};
+  \draw[->] (i) to[bend left=25] node[above, font=\scriptsize]{$a_2$} (j);
+  \draw[->] (j) to[bend left=25] node[below, font=\scriptsize]{$a_2$} (i);
+  \draw[->] (i) to[loop above, looseness=6] node[above, font=\scriptsize]{$a_1$} (i);
+  \draw[->] (j) to[loop above, looseness=6] node[above, font=\scriptsize]{$a_1$} (j);
+\end{tikzpicture}\\
+{\scriptsize Gibbs policy: $\pi(a;s)\propto\exp(\theta_{sa})$}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.6\linewidth}
+\begin{enumerate}
+  \item Start: $\rho(i)=0.8$, $\rho(j)=0.2$ \ ($\pi(a_1;i)=0.8$, $\pi(a_1;j)=0.9$).
+  \item Raising the self-loop at $i$ \textbf{starves} state $j$.
+  \item $\rho(j)$ drops to $\approx10^{-7}$ $\Rightarrow$ nothing is learned at $j$.
+  \item Result: an extremely \textbf{flat plateau} (on a $10^7$ time scale).
+\end{enumerate}
+\end{minipage}
+
+\begin{warnbox}[title={Root cause}]
+$\eta_D$ weighs improvements by $d_{\pi,D}$: it is \textbf{insensitive to improvement at unlikely states} --- unlikely under the \emph{current} policy --- even when those states are needed for near-optimal performance.
+\end{warnbox}
+\src{K\&L Sec.~3.2, Figs.~3.1--3.3.}
+
+\subsection{Gap 2 as covariate shift}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[notes, width=11cm, height=4.4cm, ybar, bar width=6pt, ymin=0, ymax=0.42,
+    xtick={1,...,10}, xticklabels={1,2,3,4,5,6,7,8,9,goal}, ytick=\empty,
+    legend style={at={(0.5,1.02)}, anchor=south, legend columns=2}, area legend]
+  \addplot[fill=AtlasCool!70, draw=none] coordinates {(1,0.4)(2,0.28)(3,0.17)(4,0.09)(5,0.04)(6,0.015)(7,0.005)(8,0)(9,0)(10,0)};
+  \addlegendentry{train: $d_{\pi,D}$}
+  \addplot[fill=AtlasAccent!25, draw=AtlasAccent] coordinates {(1,0.06)(2,0.06)(3,0.06)(4,0.06)(5,0.06)(6,0.06)(7,0.06)(8,0.07)(9,0.08)(10,0.37)};
+  \addlegendentry{target: $d_{\pi^*,D}$}
+  \draw[BadRed, thick, dashed] (axis cs:7.5,0) -- (axis cs:7.5,0.4);
+  \node[font=\scriptsize, BadRed] at (axis cs:8.6,0.25) {no training data};
+\end{axis}
+\end{tikzpicture}
+\end{center}
+
+\begin{pair}[3]
+\begin{coolbox}[title={Train}]
+\small Samples come from where the \textbf{current} $\pi$ goes.
+\end{coolbox}
+\begin{slatebox}[title={Target}]
+\small Near-optimal play needs good actions where $\pi^*$ goes.
+\end{slatebox}
+\begin{warnbox}[title={No overlap}]
+\small Zero gradient (Ex.~1), starved state $j$ (Ex.~2).
+\end{warnbox}
+\end{pair}
+
+\textbf{Unlike standard covariate shift:}
+\begin{enumerate}
+  \item the target $d_{\pi^*,D}$ needs $\pi^*$ --- \textbf{unknown};
+  \item the data come from $\pi$ itself --- the gap can \textbf{grow} as $\pi$ learns (Ex.~2);
+  \item the ``labels'' $A_\pi$ change with every update;
+  \item the off-policy fix is a \textbf{product} of per-step ratios $\prod_t\pi/q$ --- exponential in the horizon, not a single ratio $p_{\text{test}}/p_{\text{train}}$.
+\end{enumerate}
+
+\begin{keybox}[title={Instead}]
+Change \emph{where the data come from}: train from a restart distribution $\mu$, still judged by $\eta_D$. The precise version (a density ratio) is Thm.~6.2.
+\end{keybox}
+
+\begin{notebox}
+Related: imitation learning (DAgger) --- the learner's own mistakes change which states it visits. Augmentation view: $\mu$-restarts show the learner states it would not reach; unlike classic augmentation, the states are real and the ``labels'' $\hat Q_\pi$ come from real rollouts. The price is reset access.
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section{The two fixes}
+% ---------------------------------------------------------------------------
+
+\begin{pair}
+\begin{warmbox}[title={1. Conservative update $\to$ Gap 1}]
+Don't jump to the greedy policy --- \textbf{mix}:
+\begin{gather*}
+  \pinew(a;s) = (1-\alpha)\,\pi(a;s) + \alpha\,\pi'(a;s)
+\end{gather*}
+\begin{itemize}
+  \item $\alpha\in[0,1]$ acts as a \textbf{step size}.
+  \item $\alpha=1$ is greedy policy iteration.
+\end{itemize}
+\end{warmbox}
+\begin{coolbox}[title={2. Restart distribution $\mu$ $\to$ Gap 2}]
+Optimize a measure that weighs states more uniformly:
+\begin{gather*}
+  \eta_\mu(\pi) = \E_{s\sim\mu}\big[V_\pi(s)\big]
+\end{gather*}
+\begin{itemize}
+  \item $\mu$ is ``exploratory''; the agent can restart from $s\sim\mu$.
+  \item $D$: deployment (given). $\mu$: training resets (chosen).
+\end{itemize}
+\end{coolbox}
+\end{pair}
+
+\begin{itemize}
+  \item Any \textbf{optimal} policy maximizes both $\eta_\mu$ and $\eta_D$ --- but within a restricted class they can differ.
+  \item Sec.~7.2 of the paper: train under $\tilde\mu=(1-\beta)\mu+\beta D$ to keep some weight on $D$.
+\end{itemize}
+
+\textbf{How strong is a $\mu$-restart?} Access to the environment, from strongest to weakest:
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize, >=Stealth,
+    a/.style={rectangle, rounded corners=2pt, draw=AtlasSlate, fill=AtlasSlate!6, text width=2.6cm, align=center, minimum height=0.9cm}]
+  \node[a] (p) at (0,0) {full model $P$};
+  \node[a] (g) at (3.2,0) {generative model\\ {\tiny sample $s'$ at \emph{any} $(s,a)$}};
+  \node[a, draw=AtlasCool, fill=AtlasCool!12, line width=1pt] (m) at (6.4,0) {\textbf{$\mu$-restart}\\ {\tiny reset to a \emph{random} $s\sim\mu$}};
+  \node[a] (o) at (9.6,0) {one trajectory\\ {\tiny no resets}};
+  \foreach \x/\y in {p/g, g/m, m/o} \draw[->, AtlasSlate] (\x) -- node[above, font=\tiny]{$>$} (\y);
+\end{tikzpicture}
+\end{center}
+{\footnotesize\color{NoteGray}Generative model: Kearns, Mansour \& Ng (1999). $\mu$-restarts need training-time reset access, e.g.\ a simulator, or a lab where the start state can be set.}
+
+\subsection{Roadmap: from the two fixes to the three answers}
+
+\begin{center}
+\begin{tikzpicture}[font=\footnotesize, >=Stealth,
+    fix/.style={fl, line width=0.8pt, text width=3.3cm, minimum height=1.1cm},
+    res/.style={fl, cbox=AtlasSlate, text width=4.4cm, minimum height=1.05cm},
+    q/.style={fl, draw=GoodGreen, fill=GoodGreen!8, line width=0.8pt, text width=2.6cm, minimum height=1.05cm}]
+  \node[font=\scriptsize\bfseries, NoteGray] at (0,3.6) {the two fixes};
+  \node[font=\scriptsize\bfseries, NoteGray] at (5.2,3.6) {results};
+  \node[font=\scriptsize\bfseries, NoteGray] at (10.2,3.6) {the three questions};
+  \node[fix, cbox=AtlasWarm] (cons) at (0,2.3) {\textbf{\color{AtlasWarm}1. Conservative update}\\ mix with step $\alpha$};
+  \node[fix, cbox=AtlasCool] (mu) at (0,-1.15) {\textbf{\color{AtlasCool}2. Restart distribution}\\ measure $\eta_\mu$, restarts $s\sim\mu$};
+  \node[res] (a) at (5.5,2.3) {\textbf{Policy advantage + bound}\\ gain $\ge\PA^2/8R$ per step\\ {\scriptsize\color{NoteGray}Thm 4.1, Cor 4.2}};
+  \node[res] (b) at (5.5,0) {\textbf{CPI: estimate $\PA$ from restarts}\\ stops in $O(R^2/\varepsilon^2)$ updates\\ {\scriptsize\color{NoteGray}Thm 4.4}};
+  \node[res] (c) at (5.5,-2.3) {\textbf{Performance difference lemma}\\ quality $\propto\|d_{\pi^*}/\mu\|_\infty$\\ {\scriptsize\color{NoteGray}Lemma 6.1, Thm 6.2}};
+  \node[q] (q1) at (10.6,2.3) {\textbf{Q1} improve at every step?};
+  \node[q] (q2) at (10.6,0) {\textbf{Q2} verify an update?};
+  \node[q] (q3) at (10.6,-2.3) {\textbf{Q3} performance in reasonable time?};
+  \draw[->, line width=1pt, AtlasWarm] (cons) -- (a);
+  \draw[->, line width=1pt, AtlasCool] (mu.east) -- (b.west);
+  \draw[->, line width=1pt, AtlasCool] (mu.east) -- (c.west);
+  \draw[->, AtlasSlate, thick] (a) -- (q1);
+  \draw[->, AtlasSlate, thick] (b) -- (q2);
+  \draw[->, AtlasSlate, thick] (b.east) -- node[above, sloped, font=\tiny]{speed} (q3.west);
+  \draw[->, AtlasSlate, thick] (c) -- node[below, font=\tiny]{quality} (q3);
+\end{tikzpicture}
+\end{center}
+
+\begin{keybox}
+$\mu$ sets the \textbf{quality} of the result, not the \textbf{speed}: the number of updates does not depend on $\mu$.
+\end{keybox}
+
+% ---------------------------------------------------------------------------
+\section{The performance difference lemma}
+\label{sec:pdl}
+% ---------------------------------------------------------------------------
+
+\begin{defbox}{per-state advantage of $\pi'$ over $\pi$}
+One step of $\pi'$ at $s$, then back to $\pi$:
+\begin{gather*}
+  \bar A(s) = \E_{a\sim\pi'(\cdot;s)}\big[A_\pi(s,a)\big]
+\end{gather*}
+\end{defbox}
+
+\begin{thmbox}{Lemma 6.1 (performance difference)}
+For any $\pi,\pi'$ and start distribution $\mu$:
+\begin{gather*}
+  \eta_\mu(\pi') - \eta_\mu(\pi) \;=\; \frac{1}{1-\gamma}\,\E_{s\sim d_{\pi',\mu}}\big[\bar A(s)\big]
+  \;=\; \E\Big[\textstyle\sum_t \gamma^t\,\bar A(s_t) \;\Big|\; s_0\sim\mu,\ \pi'\Big]
+\end{gather*}
+{\footnotesize The second equality: App.~\ref{app:sumswap}.}
+\end{thmbox}
+
+\begin{center}
+\begin{tikzpicture}[x=2.0cm, >=Stealth,
+    st/.style={circle, draw=AtlasWarm, fill=AtlasWarm!10, minimum size=7mm, inner sep=0pt, font=\scriptsize}]
+  \node[st] (s0) at (0,0) {$s_0$};
+  \node[st] (s1) at (1,0) {$s_1$};
+  \node[st] (s2) at (2,0) {$s_2$};
+  \node (s3) at (3,0) {$\cdots$};
+  \foreach \a/\b in {s0/s1, s1/s2, s2/s3} \draw[->, AtlasWarm, thick] (\a) -- node[above, font=\tiny]{$\pi'$} (\b);
+  \node[font=\scriptsize, left=4pt of s0] {$\mu$};
+  \node[font=\scriptsize, below=2pt of s0] {$\bar A(s_0)$};
+  \node[font=\scriptsize, below=2pt of s1] {$+\,\gamma\bar A(s_1)$};
+  \node[font=\scriptsize, below=2pt of s2] {$+\,\gamma^2\bar A(s_2)$};
+\end{tikzpicture}
+\end{center}
+
+\begin{pair}
+\begin{keybox}[title={Exact}]
+The gain is the one-step advantages, collected along the \textbf{new} policy's path.
+\end{keybox}
+\begin{warnbox}[title={Not measurable}]
+It needs $d_{\pi',\mu}$: the states of a policy we have not run yet.
+\end{warnbox}
+\end{pair}
+
+\textbf{Proof sketch.}
+\begin{enumerate}
+  \item Along a trajectory of $\pi'$, add and subtract $V_\pi(s_t)$ at each step.
+  \item The terms $\gamma V_\pi(s_{t+1})-V_\pi(s_t)$ telescope to $-V_\pi(s_0)$.
+  \item What remains is $\sum_t\gamma^t A_\pi(s_t,a_t)$; average over $a_t\sim\pi'$.
+\end{enumerate}
+In operator form, $\bar A(s)=(T_{\pi'}V_\pi)(s)-V_\pi(s)$: what we gain by deviating to $\pi'$ for one step at $s$. This is also the starting point of TRPO (its Eq.~1).
+
+% ---------------------------------------------------------------------------
+\section{The policy advantage}
+\label{sec:pa}
+% ---------------------------------------------------------------------------
+
+\begin{defbox}{policy advantage (K\&L Sec.~4.1)}
+\begin{gather*}
+  \PA_{\pi,\mu}(\pi') = \E_{s\sim d_{\pi,\mu}}\Big[\E_{a\sim\pi'(\cdot;s)}\big[A_\pi(s,a)\big]\Big] = \E_{s\sim d_{\pi,\mu}}\big[\bar A(s)\big]
+\end{gather*}
+\end{defbox}
+
+\begin{enumerate}
+  \item Lemma 6.1's average, but on the states the \textbf{old} $\pi$ visits (from $\mu$) $\Rightarrow$ \textbf{measurable}.
+  \item One step of policy improvement maximizes it.
+  \item It is exactly the \textbf{first-order} change of $\eta_\mu$ in $\alpha$ (proof: App.~\ref{app:proof-pa}):
+  \begin{gather*}
+    \left.\frac{\partial \eta_\mu}{\partial \alpha}\right|_{\alpha=0} = \frac{1}{1-\gamma}\PA_{\pi,\mu}(\pi')
+    \qquad\Longrightarrow\qquad
+    \Delta\eta_\mu = \frac{\alpha}{1-\gamma}\PA_{\pi,\mu}(\pi') + O(\alpha^2)
+  \end{gather*}
+\end{enumerate}
+
+\begin{keybox}
+Small $\alpha$ + positive policy advantage $\Rightarrow$ improvement. Large $\alpha$ $\Rightarrow$ possible degradation. \textbf{How large can $\alpha$ be?}\\
+For TRPO: a surrogate built on the \emph{old} state distribution matches the true objective to first order.
+\end{keybox}
+
+\subsection{The exact change vs.\ the policy advantage}
+
+Apply Lemma 6.1 to the mixture $\pinew=(1-\alpha)\pi+\alpha\pi'$. Per state,
+$\E_{a\sim\pinew}A_\pi(s,a)=(1-\alpha)\cdot0+\alpha\bar A(s)=\alpha\bar A(s)$. Then add and subtract the old distribution:
+\begin{gather*}
+  (1-\gamma)\big(\eta_\mu(\pinew)-\eta_\mu(\pi)\big) = \alpha\textstyle\sum_s d_{\pinew,\mu}(s)\,\bar A(s) \\
+  = \underbrace{\alpha\textstyle\sum_s d_{\pi,\mu}(s)\,\bar A(s)}_{=\,\alpha\PA:\ \text{old states, measurable}}
+    + \underbrace{\alpha\textstyle\sum_s \big(d_{\pinew,\mu}-d_{\pi,\mu}\big)(s)\,\bar A(s)}_{\text{gap: state shift, not measurable}}
+\end{gather*}
+
+\begin{minipage}[c]{0.45\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=6.6cm, height=4.2cm, xmin=0, xmax=5, ymin=0, ymax=1.8, xtick=\empty, ytick=\empty, xlabel={$s$}]
+  \addplot[name path=old, AtlasSlate, very thick, smooth] coordinates {(0,0.3)(1,1.4)(2,1.0)(3,0.5)(4,0.3)(5,0.2)};
+  \addplot[name path=new, AtlasWarm, very thick, smooth] coordinates {(0,0.3)(1,1.1)(2,1.05)(3,0.8)(4,0.5)(5,0.3)};
+  \addplot[BadRed!18] fill between[of=old and new];
+  \node[AtlasSlate, font=\scriptsize] at (axis cs:1.0,1.6) {$d_{\pi,\mu}$};
+  \node[AtlasWarm, font=\scriptsize] at (axis cs:3.4,1.05) {$d_{\pinew,\mu}$};
+\end{axis}
+\end{tikzpicture}\\
+{\scriptsize \textcolor{BadRed}{shaded}: the shift --- $\bar A$ unknown there.}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.52\linewidth}
+\begin{itemize}
+  \item $\alpha\PA$: the first-order term above.
+  \item Gap: \textbf{two factors of $\alpha$} --- a smaller $\bar A$ \emph{and} less shift ($\pinew$ deviates from $\pi$ only w.p.\ $\alpha$ per step) $\Rightarrow$ $O(\alpha^2)$.
+  \item Thm.~4.1 is a \textbf{lower bound on the gap}: a worst case on the shaded mass.
+\end{itemize}
+\end{minipage}
+
+\begin{keybox}
+Exact but unmeasurable (Lemma 6.1) \ $=$ \ measurable ($\alpha\PA$) \ $+$ \ gap. We only need to \textbf{bound the gap}.
+\end{keybox}
+
+% ---------------------------------------------------------------------------
+\section{How big a step? The improvement bound}
+% ---------------------------------------------------------------------------
+
+\begin{thmbox}{Theorem 4.1 (K\&L)}
+With $\varepsilon = \max_s \big|\E_{a\sim\pi'}[A_\pi(s,a)]\big|$, for all $\alpha\in[0,1]$:
+\begin{gather*}
+  \eta_\mu(\pinew) - \eta_\mu(\pi) \;\ge\; \frac{\alpha}{1-\gamma}\Big(\PA - \frac{2\alpha\gamma\varepsilon}{1-\gamma(1-\alpha)}\Big)
+\end{gather*}
+\end{thmbox}
+
+\begin{minipage}[c]{0.5\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=7.2cm, height=5cm, xmin=0, xmax=0.5, ymin=0, ymax=1.1,
+    xlabel={$\alpha$}, xtick={0,0.2857,0.5}, xticklabels={0,0.29,0.5}, ytick=\empty,
+    legend pos=north west]
+  \addplot[name path=gain, AtlasCool, very thick, domain=0:0.5, samples=60] {1.5*x};
+  \addlegendentry{gain $\frac{\alpha\PA}{1-\gamma}$}
+  \addplot[name path=pen, BadRed, very thick, domain=0:0.5, samples=60] {3*x^2/(0.4+0.6*x)};
+  \addlegendentry{penalty $\propto\alpha^2$}
+  \addplot[GoodGreen!25] fill between[of=gain and pen, soft clip={domain=0:0.2857}];
+  \draw[dashed, gray] (axis cs:0.2857,0) -- (axis cs:0.2857,0.43);
+\end{axis}
+\end{tikzpicture}\\
+{\scriptsize Illustrative: $\gamma=0.6$, $\varepsilon=1$, $\PA=0.6$. Green: improvement guaranteed.}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.47\linewidth}
+\begin{itemize}
+  \item \textbf{Gain} $\alpha\PA$: linear, measured on old states.
+  \item \textbf{Penalty}: worst case of the state shift, $\propto\alpha^2$ near 0.
+  \item \textbf{Small $\alpha$}: the gain wins $\Rightarrow$ guaranteed progress whenever $\PA>0$.
+  \item \textbf{$\alpha=1$}: the B\&T penalty plus a gain; usually loses (needs $\gamma<\frac12$). Comparison: App.~\ref{app:bt}.
+\end{itemize}
+\end{minipage}
+
+\subsection{Choosing the step: Corollary 4.2}
+
+Three steps.
+
+\textbf{Step 1 --- simplify.} Lower the bound further so that only the measurable $\PA$ is left. Use $\varepsilon\le R$, \ $1-\gamma(1-\alpha)\ge1-\gamma$, \ $\gamma\le1$:
+\begin{gather*}
+  \eta_\mu(\pinew)-\eta_\mu(\pi) \;\ge\; \frac{\alpha}{1-\gamma}\Big(\PA - \frac{2\alpha R}{1-\gamma}\Big) \;=:\; f(\alpha)
+\end{gather*}
+
+\textbf{Step 2 --- maximize.} $f(\alpha)=\frac{\PA}{1-\gamma}\alpha-\frac{2R}{(1-\gamma)^2}\alpha^2$ is a downward parabola:
+\begin{gather*}
+  f'(\alpha) = \frac{\PA}{1-\gamma} - \frac{4R\,\alpha}{(1-\gamma)^2} = 0
+  \quad\Longrightarrow\quad
+  \alpha^* = \frac{(1-\gamma)\PA}{4R}
+\end{gather*}
+
+\textbf{Step 3 --- plug in.}
+\begin{gather*}
+  f(\alpha^*) = \frac{\PA}{1-\gamma}\cdot\frac{(1-\gamma)\PA}{4R} - \frac{2R}{(1-\gamma)^2}\cdot\frac{(1-\gamma)^2\PA^2}{16R^2}
+  = \frac{\PA^2}{4R}-\frac{\PA^2}{8R} = \frac{\PA^2}{8R}
+\end{gather*}
+
+\begin{minipage}[c]{0.48\linewidth}
+\begin{thmbox}{Corollary 4.2}
+If $\PA\ge0$, then $\alpha=\frac{(1-\gamma)\PA}{4R}$ guarantees
+\begin{gather*}
+  \eta_\mu(\pinew)-\eta_\mu(\pi)\ge\frac{\PA^2}{8R}.
+\end{gather*}
+\end{thmbox}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.48\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=6.6cm, height=4.4cm, xmin=0, xmax=0.0105, ymin=0, ymax=0.0058,
+    xlabel={$\alpha$}, xtick={0,0.005,0.01}, xticklabels={0,$\alpha^*{=}0.005$,0.01},
+    ytick={0.005}, yticklabels={$\frac{\PA^2}{8R}$}, scaled ticks=false]
+  \addplot[AtlasCool, very thick, domain=0:0.01, samples=60] {2*x-200*x^2};
+  \draw[dashed, gray] (axis cs:0.005,0) -- (axis cs:0.005,0.005);
+  \fill[AtlasWarm] (axis cs:0.005,0.005) circle (2pt);
+\end{axis}
+\end{tikzpicture}\\
+{\scriptsize $f(\alpha)$ for $\gamma=0.9$, $R=1$, $\PA=0.2$.}
+\end{minipage}
+
+\begin{pair}
+\begin{keybox}[title={Computable}]
+$\PA$ averages over the \emph{old} policy's states ($\mu$-restarts); $R$ is known. The unknown $\varepsilon$ (a max over all states) is gone.
+\end{keybox}
+\begin{warnbox}[title={Tiny steps}]
+$\PA\le R$ gives $\alpha\le(1-\gamma)/4$ \ (${}\le0.0025$ at $\gamma=0.99$), and $\alpha\to0$ as $\PA\to0$. This worst-case conservatism is what TRPO relaxes.
+\end{warnbox}
+\end{pair}
+
+% ---------------------------------------------------------------------------
+\section{The CPI algorithm}
+\label{sec:cpi-alg}
+% ---------------------------------------------------------------------------
+
+\begin{algbox}{Conservative Policy Iteration}
+\begin{enumerate}
+  \item $\pi' \leftarrow G_\varepsilon(\pi,\mu)$ \hfill {\small(greedy policy chooser)}
+  \item Estimate $\hat\PA \approx \PA_{\pi,\mu}(\pi')$ to $\pm\frac\varepsilon3$ with $O\big(\frac{R^2}{\varepsilon^2}\log\frac{R^2}{\delta\varepsilon^2}\big)$ $\mu$-restarts.
+  \item If $\hat\PA < \frac{2\varepsilon}{3}$: \textbf{stop}, return $\pi$.
+  \item Else: mix with $\alpha = \frac{(1-\gamma)(\hat\PA - \varepsilon/3)}{4R}$, and go to 1.
+\end{enumerate}
+\end{algbox}
+
+\begin{defbox}{greedy policy chooser $G_\varepsilon$ and $\OPT$}
+$G_\varepsilon(\pi,\mu)$ returns $\pi'$ with $\PA_{\pi,\mu}(\pi') \ge \OPT(\PA_{\pi,\mu}) - \varepsilon$, where
+\begin{gather*}
+  \OPT(\PA_{\pi,\mu}) \equiv \max_{\pi'}\PA_{\pi,\mu}(\pi') = \E_{s\sim d_{\pi,\mu}}\big[\max_a A_\pi(s,a)\big]
+\end{gather*}
+is the largest policy advantage any $\pi'$ can achieve (Def.~4.3). Small $\OPT$ $\Rightarrow$ no policy improves much on $\pi$ under $d_{\pi,\mu}$. One way to build $G_\varepsilon$: a regression on advantages with \textbf{average} error $\le\varepsilon/2$ (App.~\ref{app:greedy}).
+\end{defbox}
+
+\begin{thmbox}{Theorem 4.4 (K\&L)}
+With probability $\ge1-\delta$, CPI:
+\begin{enumerate}[label=\roman*)]
+  \item improves $\eta_\mu$ at \textbf{every} update;
+  \item stops within $72\,R^2/\varepsilon^2$ calls to $G_\varepsilon$;
+  \item returns $\pi$ with $\OPT(\PA_{\pi,\mu}) < 2\varepsilon$.
+\end{enumerate}
+\end{thmbox}
+
+\begin{notebox}
+Why at most $72R^2/\varepsilon^2$ updates: each update gains $\ge\PA^2/8R\ge\varepsilon^2/(72R)$ (since $\PA\ge\varepsilon/3$ when CPI steps), and $\eta_\mu\le R$. The count does \textbf{not} depend on $\mu$ or on the size of the state space.
+\end{notebox}
+
+\subsection{Verifying an update: estimating $\PA$ from $\mu$-restarts}
+
+Since $V_\pi(s)=\sum_a\pi(a;s)\,Q_\pi(s,a)$, the policy advantage needs only $Q_\pi$:
+\begin{gather*}
+  \PA_{\pi,\mu}(\pi') = \E_{s\sim d_{\pi,\mu}}\Big[\textstyle\sum_a\big(\pi'(a;s)-\pi(a;s)\big)\,Q_\pi(s,a)\Big]
+\end{gather*}
+
+\begin{center}
+\begin{tikzpicture}[x=1.5cm, >=Stealth,
+    st/.style={circle, draw=AtlasSlate, fill=AtlasSlate!10, minimum size=6.5mm, inner sep=0pt, font=\scriptsize}]
+  \node[font=\scriptsize] (mu) at (-0.7,0) {$\mu$};
+  \node[st] (s0) at (0,0) {$s_0$};
+  \node[st] (s1) at (1,0) {$s_1$};
+  \node (dd) at (2,0) {$\cdots$};
+  \node[st, draw=AtlasWarm, fill=AtlasWarm!15] (s) at (3,0) {$s$};
+  \draw[->] (mu) -- (s0);
+  \draw[->, AtlasSlate] (s0) -- node[above, font=\tiny]{$\pi$} (s1);
+  \draw[->, AtlasSlate] (s1) -- (dd);
+  \draw[->, AtlasSlate] (dd) -- (s);
+  \draw[decorate, decoration={brace, amplitude=4pt, mirror}] (-0.2,-0.4) -- node[below=4pt, font=\scriptsize]{stop at each step w.p.\ $1-\gamma$ $\Rightarrow$ $s\sim d_{\pi,\mu}$ (App.~\ref{app:geom})} (3.2,-0.4);
+  \node[st, draw=AtlasWarm, fill=AtlasWarm!15] (a) at (4.3,0) {$a$};
+  \draw[->, AtlasWarm, thick] (s) -- node[above, font=\tiny]{uniform} (a);
+  \node[font=\scriptsize, right] (q) at (5.8,0) {$\hat Q_i(s,a)$};
+  \draw[->, AtlasSlate, decorate, decoration={snake, amplitude=1.5pt, segment length=6pt}] (a) -- node[above, font=\tiny]{roll out $\pi$} (q);
+\end{tikzpicture}
+\end{center}
+
+\begin{eqbox}
+\begin{gather*}
+  x_i = n_a\,\hat Q_i(s,a)\big(\pi'(a;s)-\pi(a;s)\big)\in[-n_aR,\,n_aR], \qquad \hat\PA=\tfrac1k\textstyle\sum_{i=1}^k x_i\\
+  \text{Hoeffding:}\quad \Pr\big(|\hat\PA-\PA|>\Delta\big) \;\le\; 2\,e^{-k\Delta^2/(2n_a^2R^2)}
+\end{gather*}
+\end{eqbox}
+
+\begin{enumerate}
+  \item \textbf{Unbiased:} $a$ uniform $\Rightarrow$ $\E_a[n_af(a)]=\sum_af(a)$. An importance weight $n_a$ (the number of actions) --- App.~\ref{app:is-cpi}, App.~\ref{app:hoeffding}.
+  \item \textbf{Only rollouts of the current $\pi$} --- no need to run $\pinew$. \textbf{This is the answer to Q2.}
+  \item CPI uses $\Delta=\varepsilon/3$, so $\hat\PA-\frac\varepsilon3\le\PA$ is safe for the stop test and for $\alpha$.
+\end{enumerate}
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, box/.style={fl, font=\scriptsize, minimum height=0.9cm, text width=2.6cm}]
+  \node[box, cbox=AtlasCool] (prop) at (0,0) {\textbf{Candidate} $\pi'$\\from $G_\varepsilon$};
+  \node[box, cbox=AtlasCool] (est) at (3.4,0) {\textbf{Estimate} $\hat\PA$\\rollouts of $\pi$ only};
+  \node[box, cbox=AtlasWarm] (test) at (6.8,0) {\textbf{Test}\\$\hat\PA\ge\frac{2\varepsilon}{3}$\,?};
+  \node[box, cbox=GoodGreen] (yes) at (10.3,0.65) {\textbf{step}: gain $\ge\PA^2/8R$};
+  \node[box, cbox=AtlasSlate] (no) at (10.3,-0.65) {\textbf{stop}: $\OPT<2\varepsilon$};
+  \draw[->, thick, AtlasSlate] (prop) -- (est);
+  \draw[->, thick, AtlasSlate] (est) -- (test);
+  \draw[->, thick, GoodGreen] (test.east) -- node[above, font=\tiny]{yes} (yes.west);
+  \draw[->, thick, AtlasSlate] (test.east) -- node[below, font=\tiny]{no} (no.west);
+\end{tikzpicture}
+\end{center}
+
+\begin{notebox}
+\textbf{The naive check} --- run $\pi'$ and compare returns --- is noisy and needs rollouts of the \textbf{new} policy ($d_{\pi',\mu}$, Lemma~6.1). CPI tests \emph{before} stepping, with data from the current policy only.
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section{How good is the policy found?}
+% ---------------------------------------------------------------------------
+
+\begin{thmbox}{Theorem 6.2 (K\&L)}
+If $\OPT(\PA_{\pi,\mu}) < \varepsilon$, then for any $\tilde\mu$:
+\begin{gather*}
+  \eta_{\tilde\mu}(\pi^*) - \eta_{\tilde\mu}(\pi)
+  \;\le\; \frac{\varepsilon}{1-\gamma}\left\|\frac{d_{\pi^*,\tilde\mu}}{d_{\pi,\mu}}\right\|_\infty
+  \;\le\; \frac{\varepsilon}{(1-\gamma)^2}\left\|\frac{d_{\pi^*,\tilde\mu}}{\mu}\right\|_\infty
+\end{gather*}
+With $\tilde\mu=D$ this bounds the real goal $\eta_D$ (Cor.~4.5).
+\end{thmbox}
+
+\textbf{Proof in three steps.}
+\begin{enumerate}
+  \item Lemma 6.1 for $\pi^*$ vs.\ $\pi$: \ $\eta(\pi^*)-\eta(\pi)=\frac{1}{1-\gamma}\E_{d_{\pi^*,\tilde\mu}}\big[\E_{a\sim\pi^*}A_\pi\big]$.
+  \item $\E_{a\sim\pi^*}[A_\pi]\le\max_aA_\pi$, which is $\ge0$ (since $\E_{a\sim\pi}A_\pi=0$).
+  \item Change of measure: $\E_p[f]\le\|p/q\|_\infty\E_q[f]$ for $f\ge0$, with $\E_{d_{\pi,\mu}}[\max_aA_\pi]=\OPT(\PA_{\pi,\mu})<\varepsilon$.
+\end{enumerate}
+
+\begin{pair}
+\begin{coolbox}[title={A covariate-shift bound}]
+\small test risk $\le$ density ratio $\times$ train risk
+\begin{itemize}
+  \item train risk: $\OPT(\PA_{\pi,\mu})$, on CPI's data $d_{\pi,\mu}$
+  \item test: the states $\pi^*$ visits, $d_{\pi^*,\tilde\mu}$
+\end{itemize}
+\end{coolbox}
+\begin{keybox}[title={Uniform $\mu$ caps the ratio}]
+\small $d_{\pi,\mu}\ge(1-\gamma)\mu$, so with uniform $\mu$ the ratio is $\le|S|/(1-\gamma)$ --- for \textbf{any} $\pi^*$. Later RL theory calls it the \emph{concentrability coefficient}.
+\end{keybox}
+\end{pair}
+
+{\small Two factors of $\frac1{1-\gamma}$: one from the lemma, one from $d_{\pi,\mu}\ge(1-\gamma)\mu$. Sec.~7.3 of the paper: choose $\mu$ using prior knowledge of where an optimal policy goes.}
+
+% ---------------------------------------------------------------------------
+\section{Summary of Part I}
+% ---------------------------------------------------------------------------
+
+\begin{tcolorbox}[notes, colback=GoodGreen!5, colframe=GoodGreen, colbacktitle=GoodGreen, title={CPI's answers to the three questions}]
+\begin{enumerate}[label=\textbf{Q\arabic*}]
+  \item \textbf{Improving measure:} $\eta_\mu$ improves at every update (Thm.~4.4).
+  \item \textbf{Verification:} estimate the policy advantage $\PA$ from samples of the current policy (Hoeffding).
+  \item \textbf{Performance:} within $O(R^2/\varepsilon^2)$ updates, close to optimal up to the mismatch factor (Thm.~6.2).
+\end{enumerate}
+\end{tcolorbox}
+
+\begin{pair}
+\begin{keybox}[title={Kept going forward}]
+\begin{itemize}
+  \item Surrogate on the \textbf{old} state distribution
+  \item Improvement lower bound $=$ gain $-$ penalty
+  \item Small, controlled steps
+\end{itemize}
+\end{keybox}
+\begin{warnbox}[title={Limitations}]
+\begin{itemize}
+  \item Only \textbf{mixture} policies
+  \item Needs a restart distribution
+  \item Theoretical step sizes are tiny
+\end{itemize}
+\end{warnbox}
+\end{pair}
+
+\begin{notebox}
+Like non-convex SGD (a bounded objective and a sure gain per step $\Rightarrow$ few steps to a stationary point), but Thm.~6.2 turns ``stationary'' into ``near-optimal''. Details: App.~\ref{app:cpi-sgd}.
+\end{notebox}
+
+\subsection{The two lanes to follow}
+
+\begin{center}
+\begin{tikzpicture}[font=\footnotesize, >=Stealth,
+    fix/.style={fl, line width=0.8pt, text width=3.4cm, minimum height=1.1cm},
+    res/.style={fl, cbox=AtlasSlate, text width=3.6cm, minimum height=1.05cm},
+    q/.style={fl, draw=GoodGreen, fill=GoodGreen!8, line width=0.8pt, text width=2.8cm, minimum height=1.05cm}]
+  \node[font=\scriptsize\bfseries, NoteGray] at (0,2.6) {the problem};
+  \node[font=\scriptsize\bfseries, NoteGray] at (4.6,2.6) {CPI's fix};
+  \node[font=\scriptsize\bfseries, NoteGray] at (9.2,2.6) {what it buys};
+  \node[fix, cbox=AtlasWarm] (pa) at (0,1.5) {\textbf{\color{AtlasWarm}A. How far may I step?}\\ greedy jumps can hurt (Gap 1)};
+  \node[res] (fa) at (4.6,1.5) {\textbf{Conservative mixture}\\ $\pinew=(1-\alpha)\pi+\alpha\pi'$};
+  \node[q] (ra) at (9.2,1.5) {gain $\propto\alpha\PA$\\ $-$ penalty $\propto\alpha^2$};
+  \node[fix, cbox=AtlasCool] (pb) at (0,-1.0) {\textbf{\color{AtlasCool}B. Where do I learn?}\\ unvisited states give no signal (Gap 2)};
+  \node[res] (fb) at (4.6,-1.0) {\textbf{Restart distribution $\mu$}\\ train from $s_0\sim\mu$, judge by $\eta_D$};
+  \node[q] (rb) at (9.2,-1.0) {quality $\propto\big\|d_{\pi^*}/\mu\big\|_\infty$};
+  \draw[->, line width=1pt, AtlasWarm] (pa) -- (fa);
+  \draw[->, AtlasSlate, thick] (fa) -- node[above, font=\tiny]{Thm 4.1} (ra);
+  \draw[->, line width=1pt, AtlasCool] (pb) -- (fb);
+  \draw[->, AtlasSlate, thick] (fb) -- node[above, font=\tiny]{Thm 6.2} (rb);
+\end{tikzpicture}
+\end{center}
+
+\begin{keybox}
+Two \textbf{separate} axes: \textbf{update size} (A) and \textbf{state coverage} (B). TRPO keeps lane A and drops lane B; GAE and PPO never bring B back.
+\end{keybox}

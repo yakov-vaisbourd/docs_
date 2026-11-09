@@ -1,0 +1,545 @@
+% ===========================================================================
+%  APPENDIX --- proofs, tools and side comparisons (the decks' backup slides)
+% ===========================================================================
+\part*{Appendix}
+\addcontentsline{toc}{part}{Appendix}
+
+\partintro{Proofs, tools and side comparisons. Each appendix is self-contained and is referenced from the main text.}
+
+% ---------------------------------------------------------------------------
+\section{Proof: the policy advantage is the derivative at $\alpha=0$}
+\label{app:proof-pa}
+% ---------------------------------------------------------------------------
+
+\textbf{Claim} (K\&L Sec.~4.1, Eq.~4.2): $\left.\frac{\partial\eta_\mu}{\partial\alpha}\right|_{\alpha=0}=\frac{1}{1-\gamma}\PA_{\pi,\mu}(\pi')$.
+
+\textbf{Step 1 --- the mixtures are a one-parameter policy class.}
+\begin{gather*}
+  \pi_\alpha(a;s) = (1-\alpha)\,\pi(a;s) + \alpha\,\pi'(a;s)
+  \quad\Longrightarrow\quad
+  \frac{\partial\pi_\alpha(a;s)}{\partial\alpha} = \pi'(a;s) - \pi(a;s)
+\end{gather*}
+
+\textbf{Step 2 --- the policy gradient theorem holds for \emph{any} parameter, so take $\theta:=\alpha$.}
+
+\begin{pair}
+\begin{coolbox}[title={Policy gradient, any $\theta\in\mathbb R^m$}]
+\begin{gather*}
+  \nabla_\theta\,\eta_\mu = \frac{1}{1-\gamma}\sum_s d_{\pi_\theta,\mu}(s)\sum_a \nabla_\theta\pi_\theta(a;s)\,Q_{\pi_\theta}(s,a)
+\end{gather*}
+\end{coolbox}
+\begin{warmbox}[title={Mixture, at $\alpha=0$ ($\pi_0=\pi$)}]
+\begin{gather*}
+  \left.\frac{\partial\eta_\mu}{\partial\alpha}\right|_{0} = \frac{1}{1-\gamma}\,\E_{s\sim d_{\pi,\mu}}\Big[\textstyle\sum_a \big(\pi'-\pi\big)(a;s)\,Q_\pi(s,a)\Big]
+\end{gather*}
+\end{warmbox}
+\end{pair}
+
+\textbf{Step 3 --- turn $Q_\pi$ into $A_\pi$.} Since $\sum_a\pi(a;s)Q_\pi(s,a)=V_\pi(s)$ and $\sum_a\pi'(a;s)=1$:
+\begin{gather*}
+  \sum_a \pi'(a;s)\,Q_\pi(s,a) - V_\pi(s) = \sum_a\pi'(a;s)\big(Q_\pi(s,a)-V_\pi(s)\big) = \E_{a\sim\pi'(\cdot;s)}\big[A_\pi(s,a)\big]
+\end{gather*}
+\begin{eqbox}
+\begin{gather*}
+  \left.\frac{\partial\eta_\mu}{\partial\alpha}\right|_{\alpha=0}
+  = \frac{1}{1-\gamma}\,\E_{s\sim d_{\pi,\mu}}\Big[\E_{a\sim\pi'(\cdot;s)}\big[A_\pi(s,a)\big]\Big]
+  = \frac{1}{1-\gamma}\,\PA_{\pi,\mu}(\pi') \qquad \square
+\end{gather*}
+\end{eqbox}
+{\small The factor $\frac{1}{1-\gamma}$ comes from our normalization: $d_{\pi,\mu}$ sums to 1 and $Q_\pi$ carries a $(1-\gamma)$.}
+
+\subsection*{$\alpha$ and $\theta$ play the same role}
+
+\begin{center}
+\small
+\begin{tabular}{l l l}
+\toprule
+ & {\color{AtlasWarm}\textbf{CPI: parameter $\alpha\in[0,1]$}} & {\color{AtlasCool}\textbf{TRPO: parameter $\theta\in\mathbb R^m$}} \\
+\midrule
+first order & $\eta_\mu(\pi_\alpha)=\eta_\mu(\pi)+\frac{\alpha}{1-\gamma}\PA_{\pi,\mu}(\pi')+O(\alpha^2)$ & $\eta(\pi_\theta)=L_{\pi_{\theta_0}}(\pi_\theta)+o(\|\theta-\theta_0\|)$ \\
+source & this proof & TRPO Eq.~4 \\
+step size & $\alpha$ itself & $\alpha=\DTV^{\max}(\piold,\pinew)$ (Thm.~1) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}
+The proof never used that $\alpha$ is a mixing weight --- only that it parameterizes the policy. In a mixture, $\alpha$ is \textbf{both} the parameter and the distance (two mixtures differing by $\alpha$ disagree w.p.\ at most $\alpha$). For a general $\pi_\theta$ these are different things --- which is why TRPO needs $\DTV$, then KL.
+\end{keybox}
+
+% ---------------------------------------------------------------------------
+\section{Comparing with Bertsekas \& Tsitsiklis}
+\label{app:bt}
+% ---------------------------------------------------------------------------
+
+Our comparison (not in the paper), in five steps. Notation: $\bar A$ as in Lemma 6.1, $\Delta\eta=\eta_\mu(\pi')-\eta_\mu(\pi)$, and $(T_{\pi'}V)(s)=\E_{a\sim\pi'}\big[(1-\gamma)\mathcal R(s,a)+\gamma\,\E_{s'}V(s')\big]$, so that $\bar A=T_{\pi'}V_\pi-V_\pi$.
+
+\subsection*{B.1 \ The B\&T bound: a worst case at every state}
+
+Given $\varepsilon=\max_s|\tilde V(s)-V_\pi(s)|$ and $\pi'$ greedy for $\tilde V$ (i.e.\ $T_{\pi'}\tilde V\ge T_\pi\tilde V$):
+\begin{gather*}
+  \begin{aligned}
+    T_{\pi'}V_\pi \;&\ge\; T_{\pi'}\tilde V - \gamma\varepsilon && \text{\small\color{NoteGray}$V_\pi$ vs.\ $\tilde V$ at the next state: error $\le\varepsilon$, times $\gamma$}\\
+    &\ge\; T_{\pi}\tilde V - \gamma\varepsilon && \text{\small\color{NoteGray}$\pi'$ is greedy for $\tilde V$}\\
+    &\ge\; T_\pi V_\pi - 2\gamma\varepsilon \;=\; V_\pi - 2\gamma\varepsilon && \text{\small\color{NoteGray}the same error again}
+  \end{aligned}
+\end{gather*}
+\begin{eqbox}
+\begin{gather*}
+  \bar A(s) \;\ge\; -2\gamma\varepsilon \ \ \text{at \textbf{every} } s
+  \quad\Longrightarrow\quad
+  \Delta\eta = \frac{1}{1-\gamma}\,\E_{d_{\pi',\mu}}\big[\bar A\big] \;\ge\; -\frac{2\gamma\varepsilon}{1-\gamma}
+\end{gather*}
+\end{eqbox}
+\begin{warnbox}[title={Only a floor}]
+$\varepsilon$ is \textbf{how wrong our values are}. It only limits how \textbf{negative} $\bar A$ can be; nothing positive is known, since $\pi'$ is greedy for the \emph{wrong} values. ($\varepsilon=0$: $\bar A\ge0$ everywhere --- exact policy improvement.) Because the floor holds at every state, we never need $d_{\pi',\mu}$.
+\end{warnbox}
+
+\subsection*{B.2 \ Theorem 4.1 at $\alpha=1$}
+
+Split the new states into old states + shift:
+\begin{gather*}
+  (1-\gamma)\Delta\eta = \textstyle\sum_s d_{\pi',\mu}(s)\,\bar A(s)
+  = \underbrace{\textstyle\sum_s d_{\pi,\mu}(s)\,\bar A(s)}_{=\,\PA\ \text{(measurable)}}
+  + \underbrace{\textstyle\sum_s \big(d_{\pi',\mu}-d_{\pi,\mu}\big)(s)\,\bar A(s)}_{\text{shift}}
+\end{gather*}
+\begin{enumerate}
+  \item Shift $\ge -\|d_{\pi',\mu}-d_{\pi,\mu}\|_1\cdot\varepsilon$, with $\varepsilon=\max_s|\bar A(s)|=\max_s|\E_{a\sim\pi'}A_\pi(s,a)|$. It needs $|\cdot|$: the shift can also move mass \emph{away} from states where $\bar A>0$.
+  \item Same start $\mu$ $\Rightarrow$ only $t\ge1$ can differ: \ $\|d_{\pi',\mu}-d_{\pi,\mu}\|_1\le(1-\gamma)\sum_{t\ge1}\gamma^t\cdot2=2\gamma$.
+\end{enumerate}
+\begin{eqbox}
+\begin{gather*}
+  \Delta\eta \;\ge\; \frac{\PA}{1-\gamma} - \frac{2\gamma\varepsilon}{1-\gamma} \qquad \text{= Thm 4.1 at $\alpha=1$}
+\end{gather*}
+\end{eqbox}
+{\small The new ingredient is $\PA$: B\&T never measure any average of the true $\bar A$. The $2\gamma$ is the same number as in B\&T, from a different place: there, two estimation errors one step ahead; here, two state distributions that agree at the start.}
+
+\subsection*{B.3 \ Why the mixture helps}
+
+Same split for $\pinew=(1-\alpha)\pi+\alpha\pi'$:
+\begin{enumerate}
+  \item \textbf{Per state}: $\bar A_{\mathrm{new}}(s)=\alpha\bar A(s)$ $\Rightarrow$ gain $\alpha\PA$, \ $\max_s|\bar A_{\mathrm{new}}|=\alpha\varepsilon$.
+  \item \textbf{Shift}: $\pinew$ acts like $\pi$ w.p.\ $1-\alpha$ each step, so $\Pr(\text{deviated by }t)\le1-(1-\alpha)^t$, and
+  \begin{gather*}
+    \|d_{\pinew,\mu}-d_{\pi,\mu}\|_1 \le (1-\gamma)\textstyle\sum_t\gamma^t\,2\big(1-(1-\alpha)^t\big) = \frac{2\alpha\gamma}{1-\gamma(1-\alpha)}
+  \end{gather*}
+  \item \textbf{Multiply}: $(1-\gamma)\Delta\eta \ge \alpha\PA - \alpha\varepsilon\cdot\frac{2\alpha\gamma}{1-\gamma(1-\alpha)}$ \ = Thm 4.1.
+\end{enumerate}
+\begin{keybox}
+Both factors of the penalty carry an $\alpha$ $\Rightarrow$ $\alpha^2$. Small $\alpha$: the gain wins. $\alpha=1$: since $\PA\le\varepsilon$ we would need $\PA>2\gamma\varepsilon$ --- impossible for $\gamma\ge\frac12$. The positive term alone does not justify the full greedy step; \textbf{the small step does}.
+\end{keybox}
+
+\subsection*{B.4 \ Same penalty, different $\varepsilon$}
+
+\begin{center}
+\small
+\begin{tabular}{l l l l}
+\toprule
+ & {\color{AtlasWarm}\textbf{B\&T}} & {\color{AtlasCool}\textbf{K\&L, Thm 4.1}} & \textbf{TRPO, Thm 1} \\
+\midrule
+$\varepsilon=$ & $\max_s|\tilde V(s)-V_\pi(s)|$ & $\max_s|\E_{a\sim\pi'}A_\pi(s,a)|$ & $\max_{s,a}|A_\pi(s,a)|$ \\
+depends on & our estimate $\tilde V$ & the pair $\pi,\pi'$ & $\pi$ only \\
+measures & how wrong our values are & largest one-step gain/loss of $\pi'$ & scale of the advantages \\
+step size & fixed: full greedy step & $\alpha$ (mixture weight) & $\alpha=\DTV^{\max}(\pi,\tilde\pi)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{itemize}
+  \item \textbf{Common}: the price of not knowing $\bar A$ on the states the new policy visits.
+  \item \textbf{Why it changed}: in B\&T, $\pi'$ is fixed by $\tilde V$, so only the estimate can go wrong. K\&L ask \emph{how far may we step?} --- so $\varepsilon$ measures the step, not the estimate. It cannot be estimated either (a max over all states), so Cor.~4.2 replaces it by $R$.
+\end{itemize}
+
+\subsection*{B.5 \ Where the error went, and what TRPO does}
+
+\textbf{Where did B\&T's approximation error go?} Not into Thm 4.1's $\varepsilon$, but into
+\begin{enumerate}
+  \item the estimate of $\PA$ from $\mu$-restarts (sampling error, Hoeffding);
+  \item the accuracy of the greedy chooser $G_\varepsilon$.
+\end{enumerate}
+Both are \textbf{averages} under $d_{\pi,\mu}$ --- much weaker than B\&T's $\max_s$. (The $\varepsilon$ of $G_\varepsilon$ and Thm 4.4 is the chooser's accuracy, not the $\varepsilon$ of Thm 4.1.)
+
+\textbf{TRPO splits K\&L's $\varepsilon$} into a step and a scale (TRPO App.~A, Lemma 2: couple $a\sim\pi$, $\tilde a\sim\tilde\pi$ to disagree w.p.\ at most $\alpha$; use $\E_{a\sim\pi}A_\pi=0$):
+\begin{eqbox}
+\begin{gather*}
+  |\bar A(s)| \;\le\; 2\,\underbrace{\DTV\big(\pi(\cdot|s),\tilde\pi(\cdot|s)\big)}_{\text{policy change}\ \le\ \alpha}\cdot\underbrace{\max_{s,a}|A_\pi(s,a)|}_{\text{advantage scale}}
+\end{gather*}
+\end{eqbox}
+\begin{keybox}
+The step becomes a \textbf{distance between policies} that the algorithm controls $\Rightarrow$ trust region. Plugging this into the K\&L argument gives the $\frac{4\epsilon\gamma}{(1-\gamma)^2}\alpha^2$ penalty, with $4=2\cdot2$.
+\end{keybox}
+
+% ---------------------------------------------------------------------------
+\section{From $\E_{s\sim d}$ to a sum over time}
+\label{app:sumswap}
+% ---------------------------------------------------------------------------
+
+The second equality of Lemma 6.1, in four steps:
+\begin{gather*}
+  \begin{aligned}
+    \frac{1}{1-\gamma}\E_{s\sim d_{\pi',\mu}}[\bar A(s)] &= \frac{1}{1-\gamma}\textstyle\sum_s d_{\pi',\mu}(s)\,\bar A(s) && \text{\small\color{NoteGray}1. expectation = weighted sum}\\
+    &= \textstyle\sum_s \Big[\sum_t \gamma^t \Pr(s_t{=}s)\Big]\bar A(s) && \text{\small\color{NoteGray}2. definition of $d$; $(1-\gamma)$ cancels}\\
+    &= \textstyle\sum_t \gamma^t \Big[\sum_s \Pr(s_t{=}s)\,\bar A(s)\Big] && \text{\small\color{NoteGray}3. swap the sums}\\
+    &= \textstyle\sum_t \gamma^t\, \E\big[\bar A(s_t)\big] = \E\Big[\sum_t \gamma^t \bar A(s_t)\Big] && \text{\small\color{NoteGray}4. definition of $\E$; linearity}
+  \end{aligned}
+\end{gather*}
+
+\begin{minipage}[c]{0.45\linewidth}
+\centering
+\begin{tikzpicture}[x=0.85cm, y=0.72cm, font=\scriptsize]
+  \foreach \s/\y in {1/0, 2/-1, 3/-2} {
+    \node[AtlasWarm] at (-0.75,\y) {$s_\s$};
+    \foreach \t in {0,1,2} \node[draw=AtlasSlate!40, minimum width=0.75cm, minimum height=0.6cm, fill=AtlasWarm!8] at (\t,\y) {};
+    \node at (3,\y) {$\cdots$};}
+  \foreach \t in {0,1,2} \node[AtlasSlate] at (\t,0.8) {$t{=}\t$};
+  \draw[AtlasWarm, thick, ->] (-0.4,-1) -- (3.4,-1) node[right, align=left]{row:\\ $\frac{d(s)}{1-\gamma}\bar A(s)$};
+  \draw[AtlasSlate, thick, ->] (1,0.45) -- (1,-2.7) node[below]{column: $\gamma^t\,\E[\bar A(s_t)]$};
+\end{tikzpicture}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.52\linewidth}
+\begin{itemize}
+  \item \textbf{Cell} $(s,t)$: $\gamma^t\Pr(s_t{=}s)\,\bar A(s)$.
+  \item Sum by \textcolor{AtlasWarm}{\textbf{rows}} (step 2) or by \textcolor{AtlasSlate}{\textbf{columns}} (step 3): same total.
+  \item The swap is allowed: $|\text{cell}|\le\gamma^t\Pr(s_t{=}s)R$, and these sum to $R/(1-\gamma)<\infty$ (absolute convergence).
+\end{itemize}
+\end{minipage}
+
+\begin{notebox}
+$\E[\bar A(s_t)]$ is over $s_t\sim p_t$, $p_t(s)=\Pr(s_t{=}s\mid s_0\sim\mu,\pi')$ --- the state at time $t$, \textbf{not discounted}; one distribution per $t$. $\E[\sum_t\cdots]$ is over trajectories $s_0\sim\mu$, $a_t\sim\pi'$, $s_{t+1}\sim P$. The discount sits only in the weights $\gamma^t$.
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section{The Gibbs (softmax) policy}
+\label{app:gibbs}
+% ---------------------------------------------------------------------------
+
+\begin{minipage}[c]{0.44\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, name=sc, width=4.2cm, height=4cm, ybar, bar width=9pt, ymin=0, ymax=2.4,
+    xtick={1,2,3}, xticklabels={$a_1$,$a_2$,$a_3$}, ytick=\empty, title={\scriptsize scores $\theta_{sa}$},
+    nodes near coords, nodes near coords style={font=\tiny}]
+  \addplot[fill=AtlasSlate!50, draw=none] coordinates {(1,2)(2,1)(3,0)};
+\end{axis}
+\begin{axis}[notes, at={(sc.east)}, anchor=west, xshift=1.3cm, width=4.2cm, height=4cm, ybar, bar width=9pt, ymin=0, ymax=0.8,
+    xtick={1,2,3}, xticklabels={$a_1$,$a_2$,$a_3$}, ytick=\empty, title={\scriptsize $\pi_\theta(a;s)$},
+    nodes near coords, nodes near coords style={font=\tiny}]
+  \addplot[fill=AtlasCool!70, draw=none] coordinates {(1,0.665)(2,0.245)(3,0.090)};
+\end{axis}
+\end{tikzpicture}\\
+{\scriptsize One state, three actions. Every action keeps \textbf{some} probability.}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.53\linewidth}
+One parameter per state--action pair (``table lookup''):
+\begin{eqbox}
+\begin{gather*}
+  \pi_\theta(a;s) = \frac{e^{\theta_{sa}}}{\sum_b e^{\theta_{sb}}}
+\end{gather*}
+\end{eqbox}
+\end{minipage}
+
+\begin{enumerate}
+  \item \textbf{Why ``Gibbs''}: the Boltzmann distribution of physics, $p\propto e^{-E/T}$, with $\theta=-E/T$. A temperature ($\theta/T$): $T\to0$ gives argmax, $T\to\infty$ uniform.
+  \item \textbf{Always stochastic}: $\pi_\theta(a;s)>0$; deterministic only as $\theta\to\pm\infty$.
+  \item \textbf{Rich}: any policy with full support, in every state independently. So the trouble in Example~2 comes from the \emph{gradient}, not from the class.
+  \item \textbf{Not unique}: adding a constant to all $\theta_{sa}$ of one state leaves $\pi$ unchanged.
+  \item \textbf{Simple score} (derivation below): $\partial_{\theta_{sb}}\log\pi_\theta(a;s)=\mathbf 1[a=b]-\pi_\theta(b;s)$.
+\end{enumerate}
+
+\subsection*{Deriving the score}
+
+One state, so drop $s$ ($\theta_a=\theta_{sa}$):
+\begin{gather*}
+  \pi(a) = \frac{e^{\theta_a}}{\sum_c e^{\theta_c}}
+  \quad\Longrightarrow\quad
+  \log\pi(a) = \theta_a - \log\textstyle\sum_c e^{\theta_c}
+  \quad\Longrightarrow\quad
+  \partial_{\theta_b}\log\pi(a) = \underbrace{\partial_{\theta_b}\theta_a}_{\mathbf 1[a=b]} - \underbrace{\frac{e^{\theta_b}}{\sum_c e^{\theta_c}}}_{\pi(b)}
+\end{gather*}
+
+\begin{itemize}
+  \item \textbf{Vector form}: $\nabla_{\theta_s}\log\pi(a;s)=e_a-\pi(\cdot\,;s)$ --- ``the action taken minus the average action''. Other states get derivative 0.
+  \item \textbf{Check}: $\E_{a\sim\pi}\big[\mathbf 1[a=b]-\pi(b)\big]=0$ --- the identity $\E[\nabla\log\pi]=0$ that makes baselines unbiased.
+  \item \textbf{In REINFORCE}: taking $a_t$ with $\hat Q_t>0$ raises $\theta_{sa_t}$ by $\alpha\hat Q_t(1-\pi(a_t;s))$ and lowers each other $\theta_{sb}$ by $\alpha\hat Q_t\pi(b;s)$. Only visited states get gradient --- why a rarely visited state $j$ learns slowly.
+  \item Two actions: $\pi(a_1)=\sigma(\theta_1-\theta_2)$ and $(\log\sigma)'=1-\sigma$.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\section{Why the log-derivative trick is unbiased}
+\label{app:logderiv}
+% ---------------------------------------------------------------------------
+
+$\theta$ sits in the \textbf{sampling distribution}, not in $R(\tau)$, so averaging $\nabla_\theta R$ gives nothing. The trajectory density:
+\begin{gather*}
+  p_\theta(\tau) = {\color{NoteGray}D(s_0)}\prod_t {\color{AtlasCool}\pi_\theta(a_t;s_t)}\,{\color{NoteGray}P(s_{t+1};s_t,a_t)}
+\end{gather*}
+
+\begin{enumerate}
+  \item Use $\nabla p=p\,\nabla\log p$ wherever $p>0$:
+  \begin{gather*}
+    \nabla_\theta\,\eta_D = \sum_\tau \nabla_\theta\, p_\theta(\tau)\, R(\tau) = \E_{\tau\sim\pi_\theta}\big[R(\tau)\,\nabla_\theta\log p_\theta(\tau)\big]
+  \end{gather*}
+  \item The log turns $\prod$ into $\sum$, and the grey terms have no $\theta$:
+  \begin{gather*}
+    \nabla_\theta\log p_\theta(\tau) = \textstyle\sum_t \nabla_\theta\log{\color{AtlasCool}\pi_\theta(a_t;s_t)}
+  \end{gather*}
+\end{enumerate}
+
+\begin{keybox}
+$\hat g = R(\tau)\sum_t \nabla_\theta\log\pi_\theta(a_t;s_t)$, $\tau\sim\pi_\theta$ $\Rightarrow$ $\E[\hat g]=\nabla_\theta\eta_D$ \textbf{exactly}, and no need to know $P$.
+\end{keybox}
+
+\textbf{Unbiased is not low variance.} Two standard changes keep it unbiased and reduce the noise:
+\begin{enumerate}
+  \item Weight each $\nabla\log\pi_\theta(a_t;s_t)$ only by rewards \textbf{after} $t$ (an action cannot affect earlier rewards) --- the $\hat Q_t$ of REINFORCE.
+  \item Subtract a \textbf{baseline} $b(s_t)$, since $\E_{a\sim\pi_\theta}[\nabla_\theta\log\pi_\theta(a;s)]=\sum_a\nabla_\theta\pi_\theta(a;s)=\nabla_\theta1=0$. With $b=V_\pi$ the weight becomes the advantage --- the road to GAE.
+\end{enumerate}
+{\small Williams (1992); also called the score-function or likelihood-ratio estimator. $R(\tau)=(1-\gamma)\sum_t\gamma^tr_t$.}
+
+% ---------------------------------------------------------------------------
+\section{CPI through the SGD lens}
+\label{app:cpi-sgd}
+% ---------------------------------------------------------------------------
+
+Take the table $\pi(a;s)$ itself as the parameter: CPI is a \textbf{first-order method} on $\eta_\mu$.
+
+\begin{center}
+\footnotesize
+\begin{tabularx}{\linewidth}{@{}r L L@{}}
+\toprule
+ & {\color{AtlasSlate}\textbf{SGD (non-convex, smooth)}} & {\color{AtlasWarm}\textbf{CPI}} \\
+\midrule
+{\color{NoteGray}direction} & $\hat g\approx\nabla J(w)$ & greedy $\pi'=G_\varepsilon(\pi,\mu)$: best linearized direction \\
+{\color{NoteGray}step} & $w\leftarrow w+a_k\hat g$ & $\pi\leftarrow(1-\alpha)\pi+\alpha\pi'$ (Frank--Wolfe step) \\
+{\color{NoteGray}step size} & $\sum_ka_k=\infty$, $\sum_ka_k^2<\infty$ & $\alpha\propto\hat\PA$: slope over a smoothness bound \\
+{\color{NoteGray}noise} & averages out over many steps & each step accurate w.h.p.\ (Hoeffding) \\
+{\color{NoteGray}stationary} & $\|\nabla J(w_R)\|\le\epsilon$, random iterate & $\OPT(\PA_{\pi,\mu})<2\varepsilon$, last iterate \\
+{\color{NoteGray}cost} & $O(\sigma^2/\epsilon^4)$ samples & $72R^2/\varepsilon^2$ updates $\times$ $\tilde O(R^2/\varepsilon^2)$ rollouts \\
+{\color{NoteGray}global?} & \xmark\ a stationary point can be bad & \cmark\ Thm.~6.2, up to the mismatch factor \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{enumerate}
+  \item \textbf{CPI is Frank--Wolfe on the table $\pi(a;s)$.} $\partial\eta_\mu/\partial\pi(a;s)=d_{\pi,\mu}(s)Q_\pi(s,a)/(1-\gamma)$, so the slope toward $\pi'$ is $\langle\nabla\eta_\mu,\pi'-\pi\rangle=\PA_{\pi,\mu}(\pi')/(1-\gamma)$. $G_\varepsilon$ maximizes the linearization; per state the maximum is the greedy vertex $\arg\max_aA_\pi(s,a)$. $\OPT(\PA)/(1-\gamma)$ is the Frank--Wolfe gap. Caveat: $\eta_\mu$ is not concave in $\pi$. (Vieillard, Pietquin \& Geist 2019; Scherrer \& Geist 2014; Lacoste-Julien 2016.)
+  \item \textbf{Gibbs parameterization.} $\partial\eta_\mu/\partial\theta_{sa}=d_{\pi,\mu}(s)\pi(a;s)A_\pi(s,a)/(1-\gamma)$: the same advantage, but times $\pi(a;s)$, so good unlikely actions and unvisited states barely move (Ex.~1--2). The natural gradient (Kakade 2001) drops both factors: $\pi_{\text{new}}\propto\pi\,e^{\beta A_\pi}$, a soft move toward greedy. CPI's mixture is the hard version.
+  \item \textbf{Link to SGD.} SGD lets unbiased noise cancel over many steps; CPI makes each step accurate to $\pm\varepsilon/3$ w.h.p.\ and steps only if $\hat\PA\ge2\varepsilon/3$: monotone improvement, a guarantee for the last iterate. Counting (gain $\ge\varepsilon^2/72R$, $\eta_\mu\le R$) is the descent-lemma argument. Thm.~6.2 is what later theory calls \textbf{gradient domination} (Agarwal, Kakade, Lee \& Mahajan 2021).
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\section{Building $G_\varepsilon$ by regression on advantages}
+\label{app:greedy}
+% ---------------------------------------------------------------------------
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, box/.style={fl, cbox=AtlasCool, font=\scriptsize, minimum height=1.0cm, text width=3.1cm}]
+  \node[box] (data) at (0,0) {\textbf{Data} from $\mu$-restarts\\$s\sim d_{\pi,\mu}$, $a$ uniform,\\rollout $\hat Q_\pi(s,a)$};
+  \node[box] (fit) at (4.2,0) {\textbf{Regression}\\$f_\pi(s,a)\approx A_\pi(s,a)$};
+  \node[box, cbox=AtlasWarm] (pol) at (8.4,0) {\textbf{Greedy in $f_\pi$}\\$\pi'(s)=\arg\max_a f_\pi(s,a)$};
+  \draw[->, thick, AtlasSlate] (data) -- (fit);
+  \draw[->, thick, AtlasSlate] (fit) -- (pol);
+\end{tikzpicture}
+\end{center}
+
+\begin{defbox}{required accuracy (K\&L Sec.~7.1)}
+\begin{gather*}
+  L(f_\pi) = \underbrace{\E_{s\sim d_{\pi,\mu}}}_{\text{average over states}}\ \underbrace{\max_a}_{\text{worst action}}\big|A_\pi(s,a)-f_\pi(s,a)\big| \;\le\; \frac{\varepsilon}{2}
+\end{gather*}
+\end{defbox}
+
+\textbf{Why it suffices.} With $e(s)=\max_a|A_\pi-f_\pi|$, $\hat a=\arg\max_af_\pi$, $a^*=\arg\max_aA_\pi$:
+\begin{gather*}
+  A_\pi(s,\hat a) \ge f_\pi(s,\hat a)-e(s) \ge f_\pi(s,a^*)-e(s) \ge A_\pi(s,a^*)-2e(s) \\
+  \E_{s\sim d_{\pi,\mu}}:\quad \PA_{\pi,\mu}(\pi') \ge \OPT(\PA_{\pi,\mu}) - 2L \ge \OPT(\PA_{\pi,\mu}) - \varepsilon
+\end{gather*}
+
+\begin{keybox}
+An \textbf{average} ($\ell_1$) error over $d_{\pi,\mu}$, not the $\max_s$ ($\ell_\infty$) error of greedy DP (Gap 1): rarely visited states may be fit badly.
+\end{keybox}
+
+\begin{itemize}
+  \item \textbf{Fitting $Q$ is enough}: $A_\pi=Q_\pi-V_\pi(s)$ shifts each state by a constant --- same error, same argmax.
+  \item \textbf{Link to usual losses}: $\max_a|e|\le n_a\E_{a\sim\text{unif}}|e|\le n_a\sqrt{\E e^2}$, so an MSE below $(\varepsilon/(2n_a))^2$ suffices (pessimistic).
+  \item The paper does not bound the samples this regression needs, so the total cost of CPI is open. Descendants: API with classifiers (Lagoudakis \& Parr 2003).
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\section{Stopping with probability $1-\gamma$ samples $d_{\pi,\mu}$}
+\label{app:geom}
+% ---------------------------------------------------------------------------
+
+Run $\pi$ from $s_0\sim\mu$; after each step stop w.p.\ $1-\gamma$, independently of the trajectory. Return $s_\tau$.
+
+\begin{minipage}[c]{0.52\linewidth}
+\begin{enumerate}
+  \item $\Pr(\tau=t)=\gamma^t(1-\gamma)$ \ ($t$ continues, then one stop).
+  \item $\Pr(s_\tau=s)=\sum_t\Pr(\tau=t)\Pr(s_t=s)$ \ (needs independence).
+  \item $=(1-\gamma)\sum_t\gamma^t\Pr(s_t=s\mid\pi,\mu)=d_{\pi,\mu}(s)$.
+\end{enumerate}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.45\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=6.4cm, height=4cm, ybar, bar width=6pt, ymin=0, ymax=0.33,
+    xtick={0,2,...,10}, ytick={0,0.1,0.2,0.3}, xlabel={$t$}, title={\small $\Pr(\tau=t)=(1-\gamma)\gamma^t$, \ $\gamma=0.7$}]
+  \addplot[fill=AtlasWarm!70, draw=none, domain=0:10, samples=11] {0.3*0.7^x};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+
+\begin{keybox}
+The discount weights $(1-\gamma)\gamma^t$ are a \textbf{geometric distribution} over $t$. $\gamma$ = probability of surviving one more step; $d_{\pi,\mu}$ = the distribution of the state where an episode of random length ends. The $(1-\gamma)$ in $d_{\pi,\mu}$ is what makes $\sum_t\Pr(\tau=t)=1$.
+\end{keybox}
+{\small Cost of one sample: $\E[\tau]=\gamma/(1-\gamma)$, about 99 steps at $\gamma=0.99$.}
+
+% ---------------------------------------------------------------------------
+\section{Hoeffding's inequality and the estimate of $\PA$}
+\label{app:hoeffding}
+% ---------------------------------------------------------------------------
+
+\begin{thmbox}{Hoeffding (1963)}
+If $X_1,\dots,X_k$ are \textbf{independent} and $X_i\in[a,b]$ a.s., then for $\bar X=\frac1k\sum_iX_i$:
+\begin{gather*}
+  \Pr\big(|\bar X-\E\bar X|>\Delta\big) \;\le\; 2\exp\!\Big(-\frac{2k\Delta^2}{(b-a)^2}\Big)
+\end{gather*}
+\end{thmbox}
+
+\textbf{Conditions for the $x_i$ of CPI:}
+\begin{enumerate}
+  \item \textbf{Independent}: each $x_i$ comes from a fresh $\mu$-restart.
+  \item \textbf{Bounded}: $\hat Q_i\in[0,R]$, $|\pi'-\pi|\le1$ $\Rightarrow$ $x_i\in[-n_aR,n_aR]$, $b-a=2n_aR$.
+  \item \textbf{Right mean}: $\E x_i=\PA$ (uniform $a$, weight $n_a$); the bias of a finite rollout is kept below $\varepsilon/6$.
+\end{enumerate}
+
+\begin{eqbox}
+\begin{gather*}
+  \Pr\big(|\hat\PA-\PA|>\Delta\big) \le 2e^{-k\Delta^2/(2n_a^2R^2)}
+  \quad\Longrightarrow\quad
+  k \ge \frac{2n_a^2R^2}{\Delta^2}\log\frac2\delta \ \text{ gives error } \le\Delta \text{ w.p.\ } \ge1-\delta
+\end{gather*}
+\end{eqbox}
+
+\begin{notebox}
+No identical distribution is needed, and no variance enters --- the bound is loose when the $x_i$ rarely reach the ends of the range. The range $2n_aR$ is what costs: the importance weight $n_a$ widens it, hence $k\propto n_a^2$. In CPI, $\Delta=\varepsilon/3$ and $\delta$ is split over at most $72R^2/\varepsilon^2$ updates (union bound), which gives the $O\big(\frac{R^2}{\varepsilon^2}\log\frac{R^2}{\delta\varepsilon^2}\big)$ restarts per update (the paper drops $n_a$).
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section{Importance sampling in CPI, and why uniform actions}
+\label{app:is-cpi}
+% ---------------------------------------------------------------------------
+
+The estimate of $\PA$ needs a \textbf{sum} over actions, but each rollout tries \textbf{one} action.
+
+\begin{minipage}[c]{0.54\linewidth}
+\begin{enumerate}
+  \item \textbf{Sample from $q$, reweight by $w=p/q$} (needs $q>0$ where $p>0$):
+  \begin{gather*}
+    \E_{a\sim p}[f] = \textstyle\sum_a q\,\frac{p}{q}\,f = \E_{a\sim q}\big[w\,f\big]
+  \end{gather*}
+  \item \textbf{A plain sum is the case $p\equiv1$}; CPI takes $q$ uniform:
+  \begin{gather*}
+    \textstyle\sum_a f(a) = \E_{a\sim q}\Big[\frac{f(a)}{q(a)}\Big] = \E_{a\sim\text{unif}}\big[n_a f(a)\big]
+  \end{gather*}
+  \item \textbf{Unbiased, but the weight stretches the range}: $|f|\le R\Rightarrow|n_af|\le n_aR\Rightarrow n_a^2$ in Hoeffding.
+\end{enumerate}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.43\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=6.4cm, height=4.6cm, ybar, bar width=7pt, ymin=-1.5, ymax=4,
+    xtick={1,...,4}, xticklabels={$a_1$,$a_2$,$a_3$,$a_4$}, ytick={0,1.4}, axis x line=middle,
+    legend style={at={(0.5,1.03)}, anchor=south, legend columns=2}, area legend]
+  \addplot[fill=AtlasCool!70, draw=none] coordinates {(1,0.6)(2,-0.3)(3,0.9)(4,0.2)};
+  \addlegendentry{$f(a)$}
+  \addplot[fill=AtlasWarm!70, draw=none] coordinates {(1,2.4)(2,-1.2)(3,3.6)(4,0.8)};
+  \addlegendentry{$n_af(a)$}
+  \draw[AtlasWarm, thick, dashed] (axis cs:0.5,1.4) -- (axis cs:4.5,1.4);
+\end{axis}
+\end{tikzpicture}\\
+{\scriptsize Four actions, $\sum_af=1.4$; the orange values average to $1.4$.}
+\end{minipage}
+
+\subsection*{Why uniform? Two ways to sample the same target}
+
+At a state $s\sim d_{\pi,\mu}$:
+\begin{gather*}
+  \textstyle\sum_a\big(\pi'-\pi\big)(a;s)\,Q_\pi(s,a)
+  \;=\; \underbrace{\E_{a\sim\text{unif}}\big[n_a(\pi'-\pi)(a;s)\,Q_\pi(s,a)\big]}_{\text{importance sampling, }p\equiv1}
+  \;=\; \underbrace{\E_{a\sim\pi'}\big[Q_\pi(s,a)\big]-V_\pi(s)}_{\text{sample from }\pi'}
+\end{gather*}
+
+\begin{pair}
+\begin{coolbox}[title={CPI: $a$ uniform, one rollout of $\pi$}]
+\small $x=n_a(\pi'-\pi)(a;s)\,\hat Q(s,a)\in[-n_aR,n_aR]$
+\begin{itemize}
+  \item[$+$] same data as $G_\varepsilon$ (needs $\hat Q$ for \emph{every} $a$)
+  \item[$+$] one batch scores \emph{any} candidate $\pi'$
+  \item[$-$] factor $n_a^2$ in the sample count
+\end{itemize}
+\end{coolbox}
+\begin{slatebox}[title={Alternative: $a\sim\pi'$, rollouts of $\pi$}]
+\small $x=\hat Q(s,a)-\hat V(s)\in[-R,R]$
+\begin{itemize}
+  \item[$+$] no $n_a$; still only rollouts of $\pi$ (Q2 holds)
+  \item[$-$] needs $\pi'$ \emph{before} sampling
+  \item[$-$] a second estimate per state ($\hat V$)
+\end{itemize}
+\end{slatebox}
+\end{pair}
+
+\begin{warnbox}[title={Not plain IS with $q=\pi'$}]
+The weight would be $1/\pi'(a)$, but a greedy $\pi'$ is often deterministic, so $\pi'(a)=0$ where $\pi(a)Q_\pi(s,a)\neq0$ and the identity fails. The subtraction of $V_\pi$ in the second form is the same baseline idea that later appears as the advantage in TRPO/PPO.
+\end{warnbox}
+
+% ---------------------------------------------------------------------------
+\section{TRPO with continuous states and actions}
+\label{app:trpo-cont}
+% ---------------------------------------------------------------------------
+
+TRPO footnote~1: ``replace the sums with integrals''. \textbf{True} --- no proof uses finiteness. But ``integrals'' hides some conditions.
+
+\begin{pair}
+\begin{keybox}[title={Why it carries over}]
+\begin{itemize}
+  \item \textbf{Performance difference}: telescoping, any space.
+  \item \textbf{Coupling}: mass $1-\DTV$ on $\{a=\tilde a\}$ --- also for densities (maximal coupling on standard Borel spaces).
+  \item \textbf{Perturbation} (App.~B): matrices $\to$ Markov operators, same norms.
+\end{itemize}
+\end{keybox}
+\begin{warnbox}[title={What ``integrals'' hides}]
+\begin{enumerate}
+  \item \textbf{Bounded} $\epsilon=\sup_{s,a}|A_\pi(s,a)|<\infty$.
+  \item \textbf{max $\to$ sup} over \textbf{all} states, not just visited ones.
+  \item \textbf{Stochastic} policies: deterministic $\Rightarrow\DKL=\infty$.
+  \item \textbf{Measurable} kernels; $\rho_\pi$ is a measure.
+\end{enumerate}
+\end{warnbox}
+\end{pair}
+
+\begin{notebox}
+Condition 1 is often \textbf{vacuous} in continuous control: Gaussian actions with reward $-\|u\|^2$ (their Swimmer: $r=v_x-10^{-5}\|u\|^2$) give $\epsilon=\infty$. The practical algorithm drops the bound anyway (mean KL, fixed $\delta$). For a Gaussian with fixed $\sigma$: $\DKL(s)=\|\mu_{\mathrm{new}}(s)-\mu_{\mathrm{old}}(s)\|^2/2\sigma^2$.
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section{One problem, several known algorithms}
+\label{app:trpo-conn}
+% ---------------------------------------------------------------------------
+
+\begin{center}
+\small
+\begin{tabular}{l l l}
+\toprule
+\textbf{Objective} & \textbf{Constraint / penalty} & \textbf{Algorithm} \\
+\midrule
+linear in $\theta$ & $\frac12\|\theta-\told\|^2\le\delta$ & vanilla policy gradient \\
+linear in $\theta$ & quadratic KL, fixed step $\frac1\lambda$ & natural policy gradient \\
+full $L_{\piold}(\pi)$ & none & policy iteration \\
+$L_{\told}(\theta)$ & $\bar D_{\mathrm{KL}}\le\delta$, enforced & \textbf{TRPO} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+  \item \textbf{NPG vs.\ TRPO}: the same direction $A^{-1}g$; TRPO \textbf{enforces} the KL constraint at each step --- this matters on larger problems.
+  \item \textbf{Related}: REPS constrains the joint $p(s,a)$; TRPO constrains only $\pi(a\mid s)$.
+\end{itemize}
+\src{TRPO Sec.~7.}

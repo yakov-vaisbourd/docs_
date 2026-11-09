@@ -1,0 +1,157 @@
+% ===========================================================================
+%  Colors, boxes and notation shared by all parts.
+%  Colors match the Atlas beamer theme of the decks.
+% ===========================================================================
+
+% ulem (loaded by document-style) underlines \emph; keep italics.
+\normalem
+
+% ---- Colors (same RGB values as styles/beamerthemeAtlas.sty) ----
+\definecolor{AtlasAccent}{RGB}{35, 62, 88}
+\definecolor{AtlasInk}{RGB}{35, 35, 38}
+\colorlet{AtlasCool}{AtlasAccent}
+\definecolor{AtlasWarm}{RGB}{184, 115, 51}
+\definecolor{AtlasSlate}{RGB}{108, 79, 122}
+\definecolor{GoodGreen}{RGB}{46, 139, 87}
+\definecolor{BadRed}{RGB}{200, 60, 50}
+\definecolor{NoteGray}{RGB}{90, 90, 90}
+
+\hypersetup{colorlinks=true, linkcolor=AtlasAccent, urlcolor=AtlasAccent, citecolor=AtlasAccent}
+
+% ---- Boxes ----
+% Every box: thin frame, light tint, small title. All boxes can break across pages.
+\tcbset{
+  notes/.style={enhanced, breakable, arc=2pt, boxrule=0.6pt,
+    left=6pt, right=6pt, top=4pt, bottom=4pt,
+    fonttitle=\bfseries\small, coltitle=white,
+    before skip=7pt, after skip=7pt},
+  % one centered formula (or a few), no title; gather* is set inline so the
+  % box has equal padding (same trick as the decks' formulabox)
+  eq/.style={notes, colback=white, colframe=AtlasCool, halign=center,
+    top=6pt, bottom=6pt, before upper=\boxedgather},
+}
+% Tighter display skips inside every box (applied after the box font)
+\tcbset{notes/.append style={before upper app={\setlength{\abovedisplayskip}{4pt}%
+  \setlength{\belowdisplayskip}{4pt}\setlength{\abovedisplayshortskip}{2pt}%
+  \setlength{\belowdisplayshortskip}{4pt}}}}
+\newcommand{\boxedgather}{\renewenvironment{gather*}%
+  {$\displaystyle\begin{gathered}}{\end{gathered}$}}
+% Definition --- #1 = name
+\newtcolorbox{defbox}[2][]{notes, colback=AtlasSlate!5, colframe=AtlasSlate,
+  colbacktitle=AtlasSlate, title={Definition: #2}, #1}
+% Theorem / lemma / corollary --- #1 = full title, e.g. "Theorem 4.1 (K&L)"
+\newtcolorbox{thmbox}[2][]{notes, colback=AtlasCool!5, colframe=AtlasCool,
+  colbacktitle=AtlasCool, title={#2}, #1}
+% Key idea / take-away
+\newtcolorbox{keybox}[1][]{notes, colback=GoodGreen!6, colframe=GoodGreen,
+  colbacktitle=GoodGreen, title={Key idea}, #1}
+% Limitation / pitfall
+\newtcolorbox{warnbox}[1][]{notes, colback=BadRed!5, colframe=BadRed,
+  colbacktitle=BadRed, title={Limitation}, #1}
+% Remark / intuition: grey bar on the left, no frame
+\newtcolorbox{notebox}[1][]{enhanced, breakable, frame hidden, boxrule=0pt, arc=0pt,
+  colback=NoteGray!6, borderline west={2.5pt}{0pt}{NoteGray!60},
+  left=8pt, right=6pt, top=3pt, bottom=3pt, before skip=6pt, after skip=6pt,
+  fontupper=\small, #1}
+% Warm / cool pair (value side vs. policy side; lane A vs. lane B)
+\newtcolorbox{warmbox}[1][]{notes, colback=AtlasWarm!6, colframe=AtlasWarm,
+  colbacktitle=AtlasWarm, #1}
+\newtcolorbox{coolbox}[1][]{notes, colback=AtlasCool!6, colframe=AtlasCool,
+  colbacktitle=AtlasCool, #1}
+\newtcolorbox{slatebox}[1][]{notes, colback=AtlasSlate!6, colframe=AtlasSlate,
+  colbacktitle=AtlasSlate, #1}
+% Algorithm
+\newtcolorbox{algbox}[2][]{notes, colback=white, colframe=AtlasInk,
+  colbacktitle=AtlasInk, title={Algorithm: #2}, #1}
+% One formula, framed
+\newtcolorbox{eqbox}[1][]{eq, #1}
+
+% Paper card at the start of a section.
+% #1 title, #2 authors, #3 venue, #4 what it introduces, #5 local copy
+\newcommand{\paper}[5]{%
+  \begin{tcolorbox}[enhanced, arc=3pt, boxrule=0pt, colback=AtlasCool, coltext=white,
+      left=10pt, right=10pt, top=6pt, bottom=6pt, before skip=6pt, after skip=8pt]
+    {\large\bfseries #1\par}\vspace{2pt}
+    {\small #2 \quad$\cdot$\quad #3\par}\vspace{4pt}
+    {\color{white!75!AtlasCool}\rule{0.25\linewidth}{0.5pt}\par}\vspace{2pt}
+    {\small\textbf{Introduces:} #4\par}
+    {\scriptsize\color{white!80!AtlasCool}Local copy: \texttt{#5}\par}
+  \end{tcolorbox}}
+
+% Source line (grey, small) --- where the content comes from
+\newcommand{\src}[1]{\par\noindent{\footnotesize\color{NoteGray}\textbf{Source:} #1}\par}
+
+% Side-by-side boxes: \begin{pair} \begin{warmbox}..\end{warmbox} \begin{coolbox}..\end{coolbox} \end{pair}
+\newenvironment{pair}[1][2]{\tcbset{notes/.append style={unbreakable}}%
+  \begin{tcbraster}[raster columns=#1, raster equal height,
+    raster column skip=8pt, raster before skip=6pt, raster after skip=6pt]}{\end{tcbraster}}
+
+% Why needed / What changes / What it costs --- for each TRPO simplification
+\newcommand{\simp}[3]{%
+  \begingroup\tcbset{notes/.append style={unbreakable}}%
+  \begin{tcbraster}[raster columns=3, raster equal height, raster column skip=6pt,
+      raster before skip=4pt, raster after skip=8pt]
+    \begin{tcolorbox}[notes, colback=AtlasAccent!4, colframe=AtlasAccent!60, colbacktitle=AtlasAccent,
+        title={Why needed}, fontupper=\small]#1\end{tcolorbox}
+    \begin{tcolorbox}[notes, colback=GoodGreen!4, colframe=GoodGreen!60, colbacktitle=GoodGreen,
+        title={What changes}, fontupper=\small]#2\end{tcolorbox}
+    \begin{tcolorbox}[notes, colback=BadRed!4, colframe=BadRed!60, colbacktitle=BadRed,
+        title={What it costs}, fontupper=\small]#3\end{tcolorbox}
+  \end{tcbraster}\endgroup}
+
+% Progress strip for TRPO's five practical simplifications; #1 = current step (1-5)
+\tikzset{
+  ts/.style={rectangle, rounded corners=2pt, line width=0.6pt, text width=2.3cm,
+    align=center, minimum height=0.55cm, inner sep=2pt, font=\scriptsize},
+  ts done/.style={ts, draw=AtlasSlate!40, fill=AtlasSlate!6, text=NoteGray},
+  ts cur/.style={ts, draw=AtlasCool, fill=AtlasCool!18, line width=1pt, font=\scriptsize\bfseries},
+  ts todo/.style={ts, draw=AtlasSlate!25, text=AtlasSlate!45},
+  % generic boxes for flow diagrams: cbox=<color>
+  cbox/.style={draw=#1, fill=#1!7!white},
+  fl/.style={rectangle, rounded corners=3pt, line width=0.7pt, align=center,
+    inner sep=4pt, font=\small},
+}
+\newcommand{\trpostep}[1]{%
+  \par\noindent\hfill
+  \begin{tikzpicture}[baseline=(t1.base)]
+    \foreach \i/\t in {1/{1.~penalty $\to$ constraint},
+                       2/{2.~max $\to$ mean KL},
+                       3/{3.~samples + IS},
+                       4/{4.~linear / quadratic},
+                       5/{5.~CG + line search}} {
+      \ifnum\i<#1\relax \node[ts done] (t\i) at (\i*2.75,0) {\t};%
+      \else\ifnum\i=#1\relax \node[ts cur] (t\i) at (\i*2.75,0) {\t};%
+      \else \node[ts todo] (t\i) at (\i*2.75,0) {\t};\fi\fi
+    }
+    \foreach \i [count=\j from 2] in {1,...,4} \draw[-{Stealth[length=3pt]}, AtlasSlate!50] (t\i) -- (t\j);
+  \end{tikzpicture}\hfill\null\par\vspace{2pt}}
+
+% Ragged-right X column for tabularx
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+
+% Check / cross marks
+\newcommand{\cmark}{\leavevmode{\color{GoodGreen}\checkmark}}
+\newcommand{\xmark}{\leavevmode{\color{BadRed}$\times$}}
+
+% Part heading with a one-line summary
+\newcommand{\partintro}[1]{%
+  \begin{tcolorbox}[enhanced, frame hidden, colback=AtlasAccent!5, arc=2pt,
+      borderline west={3pt}{0pt}{AtlasAccent}, left=8pt, top=4pt, bottom=4pt,
+      before skip=4pt, after skip=10pt, fontupper=\small]#1\end{tcolorbox}}
+
+% ---- pgfplots defaults ----
+\pgfplotsset{
+  notes/.style={width=7cm, height=4.6cm, axis lines=left, tick label style={font=\scriptsize},
+    label style={font=\small}, legend style={font=\scriptsize, draw=none, fill=none},
+    every axis plot/.append style={line width=1pt}},
+}
+
+% ---- Notation (same macros as the decks) ----
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\PA}{\mathbb{A}}              % CPI policy advantage
+\newcommand{\DKL}{D_{\mathrm{KL}}}
+\newcommand{\DTV}{D_{\mathrm{TV}}}
+\newcommand{\told}{\theta_{\mathrm{old}}}
+\newcommand{\piold}{\pi_{\mathrm{old}}}
+\newcommand{\pinew}{\pi_{\mathrm{new}}}
+\newcommand{\OPT}{\mathrm{OPT}}

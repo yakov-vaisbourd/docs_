@@ -1,0 +1,625 @@
+% ===========================================================================
+%  PART V --- RL FOR LANGUAGE MODELS
+%  Human preferences -> InstructGPT -> DPO -> GRPO -> RLOO
+% ===========================================================================
+\clearpage
+\part{RL for Language Models}
+
+\partintro{\textbf{The question of Part V:} what does the CPI $\to$ PPO machinery look like when the ``environment'' is text and the reward is a learned model of human preferences? The part is organized around one question --- \textbf{what can we remove?} --- from InstructGPT's four models down to plain REINFORCE.}
+
+% ---------------------------------------------------------------------------
+\section{Text generation as an RL problem}
+% ---------------------------------------------------------------------------
+
+\begin{center}
+\begin{tikzpicture}[font=\small, >=Stealth,
+    tok/.style={rectangle, rounded corners=2pt, draw=AtlasCool, thick, fill=AtlasCool!8,
+      minimum width=0.85cm, minimum height=0.6cm, inner sep=1pt}]
+  \node[rectangle, rounded corners=2pt, draw=AtlasSlate, thick, fill=AtlasSlate!10,
+        minimum height=0.6cm, inner sep=4pt] (x) at (0,0) {prompt $x\sim D$};
+  \node[tok, right=0.35cm of x] (y1) {$y_1$};
+  \node[tok, right=0.25cm of y1] (y2) {$y_2$};
+  \node[tok, right=0.25cm of y2] (y3) {$y_3$};
+  \node[right=0.2cm of y3] (dots) {$\cdots$};
+  \node[tok, right=0.2cm of dots] (eos) {\texttt{EOS}};
+  \node[star, star points=5, fill=AtlasWarm, minimum size=0.42cm, inner sep=0pt, right=0.35cm of eos] (r) {};
+  \node[right=0.05cm of r, font=\small, AtlasWarm] {$r(x,y)$};
+  \draw[decorate, decoration={brace, amplitude=4pt, mirror}] (x.south west) -- (y2.south east)
+    node[midway, below=5pt, font=\scriptsize]{state $s_3=(x,y_{<3})$ $\to$ action $y_3\sim\pi_\theta(\cdot\mid x,y_{<3})$};
+  \draw[decorate, decoration={brace, amplitude=4pt}, AtlasCool] (y1.north west) -- (eos.north east)
+    node[midway, above=6pt, font=\scriptsize]{bandit view: the whole response $y$ is \textbf{one action}, \ $\pi_\theta(y\mid x)=\prod_t\pi_\theta(y_t\mid x,y_{<t})$};
+\end{tikzpicture}
+\end{center}
+
+\begin{pair}[3]
+\begin{slatebox}[title={Start distribution $D$}]
+\small The prompts users send --- ``$D$ comes from the application'' (Part~I).
+\end{slatebox}
+\begin{coolbox}[title={Dynamics}]
+\small Append the token: \textbf{known} and \textbf{deterministic}.
+\end{coolbox}
+\begin{warmbox}[title={Reward}]
+\small Only at the end --- but who writes $r(x,y)$ for ``helpful''?
+\end{warmbox}
+\end{pair}
+
+\begin{notebox}
+\begin{itemize}[leftmargin=*]
+  \item Token-level MDP as in RLHF with PPO: discount 1, reward-model score at \texttt{EOS}, per-token KL elsewhere (RLOO paper, Sec.~2.1).
+  \item InstructGPT calls it ``a bandit environment which presents a random customer prompt and expects a response'' (Sec.~3.5).
+  \item Our remark: deterministic, known dynamics make resetting to any prefix free --- exactly what CPI's restarts $\mu$ and TRPO's vine needed. The open question is the \textbf{reward}.
+\end{itemize}
+\end{notebox}
+
+\subsection{RLHF with PPO: what can we remove?}
+
+\begin{center}
+\begin{tikzpicture}[font=\small, >=Stealth,
+    m/.style={fl, line width=0.8pt, text width=2.45cm, minimum height=0.95cm},
+    p/.style={fl, line width=0.6pt, text width=2.45cm, minimum height=1.15cm, font=\scriptsize}]
+  \node (x) at (-6.2,0) {$x\sim D$};
+  \node[m, cbox=AtlasCool] (pi) at (-3.9,0) {\textbf{policy} $\pi_\theta$\\ {\scriptsize trained}};
+  \node[m, cbox=AtlasWarm] (rm) at (0.3,0.75) {\textbf{reward model} $r_\phi$\\ {\scriptsize frozen}};
+  \node[m, cbox=AtlasSlate] (ref) at (0.3,-0.75) {\textbf{reference} $\pi_{\mathrm{ref}}$\\ {\scriptsize frozen (SFT)}};
+  \node[m, cbox=AtlasWarm] (v) at (4.6,0) {\textbf{critic} $V_\psi$\\ {\scriptsize trained}};
+  \draw[->, thick] (x) -- (pi);
+  \draw[->, thick, AtlasSlate] (pi) -- node[above, font=\scriptsize, sloped]{$y$} (rm.west);
+  \draw[->, thick, AtlasSlate] (pi) -- node[below, font=\scriptsize, sloped]{KL} (ref.west);
+  \draw[->, thick, AtlasSlate] (rm.east) -- (v);
+  \draw[->, thick, AtlasSlate] (ref.east) -- (v);
+  \node[p, cbox=AtlasSlate] (t1) at (-5.6,-2.7) {\textbf{Human prefs} (2017)\\ learn $r_\phi$ from comparisons};
+  \node[p, cbox=AtlasSlate] (t2) at (-2.8,-2.7) {\textbf{InstructGPT} (2022)\\ all four, at LLM scale};
+  \node[p, cbox=AtlasCool] (t3) at (0,-2.7) {\textbf{DPO} (2023)\\ no $r_\phi$, no $V_\psi$, no sampling};
+  \node[p, cbox=AtlasCool] (t4) at (2.8,-2.7) {\textbf{GRPO} (2024)\\ no $V_\psi$: group baseline};
+  \node[p, cbox=AtlasCool] (t5) at (5.6,-2.7) {\textbf{RLOO} (2024)\\ no $V_\psi$, no clip: REINFORCE};
+  \draw[->, thick, AtlasSlate!60] (-6.9,-3.55) -- (7.0,-3.55) node[right, font=\scriptsize, NoteGray]{time};
+\end{tikzpicture}
+\end{center}
+
+{\small PPO for RLHF ``typically requires loading up to 4 models simultaneously: the generator, the reference (for KL estimation), the critic, and the reward model'' (RLOO paper, Sec.~1). In InstructGPT the critic is initialized from the reward model (6B each).}
+
+% ---------------------------------------------------------------------------
+\section{Learning the reward from human preferences}
+% ---------------------------------------------------------------------------
+
+\paper{Deep Reinforcement Learning from Human Preferences}
+  {Christiano, Leike, Brown, Martic, Legg \& Amodei}{NeurIPS 2017}
+  {a reward model learned from pairwise human comparisons}
+  {rlhf.md}
+
+\begin{enumerate}
+  \item Observations $o_t$, actions $a_t$ (Atari, MuJoCo) --- \textbf{no reward} from the environment.
+  \item A human compares two short clips $\sigma^1,\sigma^2$ (1--2\,s): which is better?
+  \item Goal: behavior the human prefers, with \textbf{few} queries.
+  \item No resets to chosen states: clips start wherever the agent was.
+  \item The policy is trained by any RL method: \textbf{TRPO} (MuJoCo), \textbf{A2C} (Atari).
+\end{enumerate}
+
+{\small Motivation: tasks we can recognize but not demonstrate or specify (a backflip). Comparisons were easier for humans than absolute scores.}
+
+\subsection{Three processes, running asynchronously}
+
+\begin{minipage}[c]{0.52\linewidth}
+\centering
+\begin{tikzpicture}[font=\small, >=Stealth,
+    m/.style={fl, line width=0.8pt, text width=2.4cm, minimum height=1.05cm},
+    num/.style={circle, fill=AtlasAccent, text=white, font=\scriptsize\bfseries, inner sep=1pt, minimum size=0.36cm}]
+  \node[m, cbox=AtlasCool] (pi) at (0,2.3) {\textbf{policy} $\pi$\\ {\scriptsize RL on $\hat r$}};
+  \node[m, cbox=AtlasSlate] (env) at (4.1,2.3) {\textbf{environment}\\ {\scriptsize no reward}};
+  \node[m, cbox=AtlasSlate] (hum) at (4.1,0) {\textbf{human}\\ {\scriptsize picks $\sigma^1$ or $\sigma^2$}};
+  \node[m, cbox=AtlasWarm] (rhat) at (0,0) {\textbf{reward model} $\hat r$\\ {\scriptsize supervised}};
+  \draw[->, thick] (pi.15) -- node[above, font=\scriptsize]{$a_t$} (env.165);
+  \draw[->, thick] (env.195) -- node[below, font=\scriptsize]{$o_t$} (pi.345);
+  \draw[->, thick] (env) -- node[right, font=\scriptsize]{clip pairs} (hum);
+  \draw[->, thick] (hum) -- node[below, font=\scriptsize]{labels} (rhat);
+  \draw[->, thick, AtlasWarm] (rhat) -- node[left, font=\scriptsize]{$\hat r(o_t,a_t)$} (pi);
+  \node[num] at (-1.5,2.3) {1};
+  \node[num] at (5.6,0) {2};
+  \node[num] at (-1.5,0) {3};
+\end{tikzpicture}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.45\linewidth}
+\begin{enumerate}
+  \item RL maximizes the \textbf{predicted} reward $\sum_t\hat r(o_t,a_t)$.
+  \item Pairs of clips go to the human.
+  \item $\hat r$ is fit to all comparisons so far.
+\end{enumerate}
+\end{minipage}
+
+\begin{pair}
+\begin{keybox}[title={Few labels}]
+Feedback on $<1\%$ of interactions. MuJoCo: 700 labels $\approx$ RL with the true reward. Backflip: 900 queries, $<1$ hour.
+\end{keybox}
+\begin{warnbox}[title={Keep feedback in the loop}]
+Training $\hat r$ only on early queries fails: the policy \textbf{exploits} the partial reward (e.g.\ endless volleys in Pong).
+\end{warnbox}
+\end{pair}
+
+{\small Queries are chosen where an ensemble of reward predictors disagrees most. Rewards from $\hat r$ are normalized to zero mean (only differences are identified).}
+
+\subsection{Fitting the reward: the Bradley--Terry model}
+
+\begin{minipage}[c]{0.55\linewidth}
+Preference $=$ logistic in the \textbf{difference} of summed rewards:
+\begin{gather*}
+  \hat P[\sigma^1\succ\sigma^2]
+  = \frac{e^{\sum_t\hat r(o_t^1,a_t^1)}}{e^{\sum_t\hat r(o_t^1,a_t^1)}+e^{\sum_t\hat r(o_t^2,a_t^2)}}
+  = \sigma\big(\hat R(\sigma^1)-\hat R(\sigma^2)\big)
+\end{gather*}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.4\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=5.8cm, height=3.9cm, xmin=-5, xmax=5, ymin=0, ymax=1,
+    xlabel={$\hat R(\sigma^1)-\hat R(\sigma^2)$}, ytick={0,0.5,1}, xtick={-4,0,4},
+    ylabel={$\hat P[\sigma^1\succ\sigma^2]$}, ylabel style={font=\scriptsize}]
+  \addplot[AtlasWarm, very thick, domain=-5:5, samples=80] {1/(1+exp(-x))};
+\end{axis}
+\end{tikzpicture}\\
+{\scriptsize Like \textbf{Elo} in chess: the rating gap predicts who wins.}
+\end{minipage}
+
+Fit $\hat r$ by cross-entropy on the labels $\mu$ (all mass on the preferred clip, uniform if ``equally good''):
+\begin{eqbox}
+\begin{gather*}
+  \mathrm{loss}(\hat r) = -\sum_{\mathcal D}\Big[\mu(1)\log\hat P[\sigma^1\succ\sigma^2] + \mu(2)\log\hat P[\sigma^2\succ\sigma^1]\Big]
+\end{gather*}
+\end{eqbox}
+
+\begin{keybox}[title={Only differences matter}]
+$\hat r+c$ fits equally well $\Rightarrow$ normalize. \textbf{This invariance is what DPO exploits.} For LLMs the clips become responses $y$ to the same prompt $x$.
+\end{keybox}
+
+% ---------------------------------------------------------------------------
+\section{InstructGPT: RLHF at LLM scale}
+% ---------------------------------------------------------------------------
+
+\paper{Training Language Models to Follow Instructions with Human Feedback}
+  {Ouyang, Wu, Jiang, et al.\ (OpenAI)}{NeurIPS 2022}
+  {InstructGPT --- the SFT $\to$ reward model $\to$ PPO recipe}
+  {2203.02155v1.pdf}
+
+\begin{enumerate}
+  \item $D$: real prompts sent to the OpenAI API, plus labeler-written ones.
+  \item \textbf{Bandit} environment: a prompt, a response, a reward from the RM, end of episode.
+  \item Rewards from a 6B \textbf{reward model} trained on labeler rankings.
+  \item Per-token \textbf{KL penalty} to the SFT model.
+  \item GPT-3 architecture: 1.3B, 6B, 175B.
+\end{enumerate}
+
+\subsection{The three-step recipe}
+
+\begin{pair}[3]
+\begin{slatebox}[title={1. SFT}]
+\small
+\begin{itemize}
+  \item Labelers \textbf{write} answers.
+  \item Supervised fine-tuning of GPT-3.
+  \item {\color{NoteGray}13k prompts}
+\end{itemize}
+\end{slatebox}
+\begin{warmbox}[title={2. Reward model}]
+\small
+\begin{itemize}
+  \item Labelers \textbf{rank} $K=4$--$9$ outputs $\to\binom K2$ pairs.
+  \item Loss $-\log\sigma\big(r_\theta(x,y_w)-r_\theta(x,y_l)\big)$.
+  \item {\color{NoteGray}33k prompts; 6B RM}
+\end{itemize}
+\end{warmbox}
+\begin{coolbox}[title={3. PPO}]
+\small
+\begin{itemize}
+  \item New prompt $\to$ the policy writes $y$.
+  \item RM scores $y$ $\to$ PPO step (critic initialized from the RM).
+  \item {\color{NoteGray}31k prompts, API only}
+\end{itemize}
+\end{coolbox}
+\end{pair}
+
+\begin{defbox}{reward-model loss (InstructGPT Eq.~1)}
+\begin{gather*}
+  \mathrm{loss}(\theta)=-\frac{1}{\binom K2}\E_{(x,y_w,y_l)\sim D}\Big[\log\sigma\big(r_\theta(x,y_w)-r_\theta(x,y_l)\big)\Big]
+\end{gather*}
+The Bradley--Terry loss of the previous section, with responses instead of clips.
+\end{defbox}
+
+\begin{notebox}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{All $\binom K2$ pairs in one batch element}: treating them as separate data points made each completion appear in $K-1$ updates, and the RM overfit after one epoch.
+  \item The RM is the SFT model with the unembedding layer replaced by a scalar head; 175B RMs were unstable, so all RMs are 6B.
+  \item SFT: 16 epochs --- overfits validation loss after 1 epoch, but more epochs help RM score and human ratings.
+\end{itemize}
+\end{notebox}
+
+\subsection{The KL-regularized objective (PPO-ptx)}
+
+\begin{eqbox}
+\begin{gather*}
+  \mathrm{objective}(\phi) =
+  \E_{(x,y)\sim D_{\pi_\phi^{RL}}}\Big[\underbrace{r_\theta(x,y)}_{\text{\color{AtlasWarm}reward model}}
+    - \underbrace{\beta\log\frac{\pi_\phi^{RL}(y\mid x)}{\pi^{SFT}(y\mid x)}}_{\text{\color{AtlasSlate}stay near SFT}}\Big]
+  + \underbrace{\gamma\,\E_{x\sim D_{\mathrm{pre}}}\big[\log\pi_\phi^{RL}(x)\big]}_{\text{\color{AtlasCool}pretraining mix}}
+\end{gather*}
+\end{eqbox}
+
+\begin{pair}[3]
+\begin{warmbox}[title={Reward}]
+\small The RM is only a \textbf{proxy} for the labelers.
+\end{warmbox}
+\begin{slatebox}[title={KL, $\beta=0.02$}]
+\small Per token, against \textbf{over-optimizing} the RM. Its expectation is $\DKL(\pi^{RL}\|\pi^{SFT})$.
+\end{slatebox}
+\begin{coolbox}[title={ptx, $\gamma>0$}]
+\small Fixes the ``alignment tax'' on public NLP benchmarks (SQuAD, DROP, HellaSwag, WMT).
+\end{coolbox}
+\end{pair}
+
+\begin{keybox}[title={Results}]
+Labelers prefer the \textbf{1.3B} InstructGPT to the \textbf{175B} GPT-3. 175B vs.\ 175B: preferred $85\pm3\%$ of the time. TruthfulQA about twice GPT-3; closed-domain hallucination 21\% vs.\ 41\%.
+\end{keybox}
+
+\begin{notebox}
+Without ptx ($\gamma=0$) this is the RLHF objective that \textbf{DPO} starts from. Here $\gamma$ is a mixing weight, not a discount. ``PPO'' models: $\gamma=0$; ``PPO-ptx'': $\gamma>0$. The paper aligns GPT-3 ``to the stated preferences of a specific group of people (mostly our labelers and researchers)'', not to broader human values (Sec.~5.2).
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section{DPO: the RLHF objective as a classification loss}
+% ---------------------------------------------------------------------------
+
+\paper{Direct Preference Optimization: Your Language Model Is Secretly a Reward Model}
+  {Rafailov, Sharma, Mitchell, Ermon, Manning \& Finn}{NeurIPS 2023}
+  {DPO --- the RLHF objective solved with a classification loss}
+  {dpo/dpo.md}
+
+\begin{enumerate}
+  \item Same objective as RLHF: reward minus $\beta\,\DKL(\pi\,\|\,\pi_{\mathrm{ref}})$, with $\pi_{\mathrm{ref}}=\pi^{SFT}$.
+  \item Preferences follow \textbf{Bradley--Terry} with a latent reward $r^*$.
+  \item A \textbf{fixed} dataset $\mathcal D=\{(x,y_w,y_l)\}$ (offline).
+  \item No reward model, \textbf{no sampling} from $\pi_\theta$ during training, no critic.
+\end{enumerate}
+
+\subsection{From the RLHF objective to a loss on the policy}
+
+Four steps.
+
+\begin{enumerate}
+  \item \textbf{The RLHF objective}, for a reward $r$:
+  \begin{gather*}
+    \max_\pi\ \E_{x,\,y\sim\pi}\big[r(x,y)\big] - \beta\,\DKL\big[\pi\,\|\,\pi_{\mathrm{ref}}\big]
+  \end{gather*}
+  \item \textbf{Its optimum in closed form} --- tilt $\pi_{\mathrm{ref}}$ by $e^{r/\beta}$:
+  \begin{gather*}
+    \pi_r(y\mid x) = \frac{1}{Z(x)}\,\pi_{\mathrm{ref}}(y\mid x)\,e^{r(x,y)/\beta}, \qquad Z(x)=\textstyle\sum_y\pi_{\mathrm{ref}}(y\mid x)\,e^{r(x,y)/\beta}
+  \end{gather*}
+  {\small Why: the objective equals $-\beta\,\DKL(\pi\|\pi_r)+\beta\log Z(x)$, minimized at $\pi=\pi_r$ (DPO App.~A.1). $Z(x)$ is intractable.}
+  \item \textbf{Solve for the reward}:
+  \begin{gather*}
+    r(x,y) = \beta\log\frac{\pi_r(y\mid x)}{\pi_{\mathrm{ref}}(y\mid x)} + \beta\log Z(x)
+  \end{gather*}
+  \item \textbf{Into Bradley--Terry}: both responses share $x$, so $\beta\log Z(x)$ \textbf{cancels}:
+\end{enumerate}
+
+\begin{eqbox}
+\begin{gather*}
+  \mathcal L_{\mathrm{DPO}} = -\E_{\mathcal D}\Big[\log\sigma\big(\hat r_\theta(x,y_w) - \hat r_\theta(x,y_l)\big)\Big],
+  \qquad \hat r_\theta(x,y) = \beta\log\frac{\pi_\theta(y\mid x)}{\pi_{\mathrm{ref}}(y\mid x)}
+\end{gather*}
+\end{eqbox}
+
+\begin{minipage}[c]{0.5\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=7cm, height=4.4cm, ybar, bar width=7pt, ymin=0, ymax=0.4,
+    xtick={1,2,3,4}, xticklabels={$y_1$,$y_2$,$y_3$,$y_4$}, ytick={0,0.2,0.4},
+    legend style={at={(0.5,1.03)}, anchor=south, legend columns=2}, area legend]
+  \addplot[fill=AtlasSlate!50, draw=none] coordinates {(1,0.35)(2,0.30)(3,0.20)(4,0.15)};
+  \addlegendentry{$\pi_{\mathrm{ref}}$}
+  \addplot[fill=AtlasCool!80, draw=none] coordinates {(1,0.170)(2,0.240)(3,0.264)(4,0.326)};
+  \addlegendentry{$\pi_r\propto\pi_{\mathrm{ref}}e^{r/\beta}$}
+\end{axis}
+\end{tikzpicture}\\
+{\scriptsize Toy example: $\beta=1$, rewards $r=0,\,0.5,\,1,\,1.5$. High-reward answers gain mass.}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.46\linewidth}
+\begin{keybox}[title={Read it backwards}]
+\textbf{Every policy defines a reward}, $\hat r_\theta=\beta\log\frac{\pi_\theta}{\pi_{\mathrm{ref}}}$, up to a term that depends on $x$ only. The reward-model loss with $r_\phi$ replaced by $\hat r_\theta$: \textbf{the LM is the reward model}.
+\end{keybox}
+\end{minipage}
+
+\begin{notebox}
+Thm.~1 of DPO: the reparameterization loses no generality --- every reward class (rewards equal up to a function of $x$) contains one of the form $\beta\log\pi/\pi_{\mathrm{ref}}$. Link to Part~I: the optimum is a \emph{soft-greedy} policy, and $Z(x)$ plays the role of a soft value of $\pi_{\mathrm{ref}}$. DPO also works with Plackett--Luce rankings (App.~A.3), i.e.\ InstructGPT-style $K$-way rankings.
+\end{notebox}
+
+\subsection{What the DPO update does}
+
+\begin{gather*}
+  \nabla_\theta\mathcal L_{\mathrm{DPO}} = -\beta\,\E_{\mathcal D}\Big[
+    \underbrace{\sigma\big(\hat r_\theta(x,y_l)-\hat r_\theta(x,y_w)\big)}_{\text{\color{AtlasWarm}large when the ranking is wrong}}
+    \big(\underbrace{\nabla_\theta\log\pi_\theta(y_w\mid x)}_{\text{raise }y_w} - \underbrace{\nabla_\theta\log\pi_\theta(y_l\mid x)}_{\text{lower }y_l}\big)\Big]
+\end{gather*}
+
+\begin{minipage}[c]{0.45\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=6.4cm, height=4.2cm, xmin=-5, xmax=5, ymin=0, ymax=1,
+    xlabel={margin $\hat r_\theta(y_w)-\hat r_\theta(y_l)$}, ytick={0,0.5,1}, xtick={-4,0,4},
+    ylabel={weight}, ylabel style={font=\scriptsize}]
+  \addplot[AtlasWarm, very thick, domain=-5:5, samples=80] {1/(1+exp(x))};
+  \node[font=\scriptsize, BadRed] at (axis cs:-3,0.6) {wrong order};
+  \node[font=\scriptsize, GoodGreen] at (axis cs:3,0.4) {right order};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.52\linewidth}
+\begin{itemize}
+  \item Like the reward-model loss --- applied to the policy itself.
+  \item The weight \textbf{fades} once a pair is ranked right. Without it (unlikelihood: equal weights) the model \textbf{degenerates}.
+  \item \textbf{Sentiment} (IMDb): best reward for every KL budget, above PPO --- even PPO with the true reward.
+  \item \textbf{TL;DR}: 61\% win rate vs.\ PPO's 57\%; more robust to sampling temperature.
+\end{itemize}
+\end{minipage}
+
+\subsection{What we removed, and what it costs}
+
+\begin{pair}
+\begin{keybox}[title={Removed}]
+\begin{itemize}
+  \item The reward model --- implicit in $\pi_\theta$.
+  \item The critic and the RL loop.
+  \item Sampling during training.
+\end{itemize}
+Left: $\pi_\theta$, $\pi_{\mathrm{ref}}$ and one supervised-style loss. Same optimum as RLHF (under Bradley--Terry).
+\end{keybox}
+\begin{warnbox}[title={Costs}]
+\begin{itemize}
+  \item \textbf{Offline}: responses come from $\pi^{SFT}$, not $\pi_\theta$ --- no exploration.
+  \item Learns only on the pairs in $\mathcal D$.
+  \item Later evidence: online beats offline (DeepSeekMath); DPO answers are long (RLOO paper: 104 tokens vs.\ 60.6 for RLOO on HH).
+\end{itemize}
+\end{warnbox}
+\end{pair}
+
+\begin{notebox}
+\textbf{Part I echo:} CPI's quality depends on how well the sampling distribution covers the good states ($\|d_{\pi^*}/\mu\|_\infty$, Thm.~6.2). Here: how well $\pi^{SFT}$'s answers cover good answers. (Our analogy; the DPO paper itself does not state these costs in this form.)
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section{GRPO: PPO without the critic}
+% ---------------------------------------------------------------------------
+
+\paper{DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models}
+  {Shao, Wang, Zhu, et al.\ (DeepSeek-AI)}{arXiv 2024}
+  {GRPO --- PPO with a group baseline instead of a critic}
+  {deepseekmat\_pushing\_the\_limits\_of\_\ldots.md}
+
+\begin{enumerate}
+  \item Math questions $q$ (GSM8K, MATH; chain of thought); policy: DeepSeekMath-Instruct 7B.
+  \item A \textbf{reward model} scores each output $o$ --- at the end (outcome) or per step (process).
+  \item Online: $G=64$ outputs per question from the current policy.
+  \item The problem with PPO's critic: \textbf{as large as the policy}, and hard to fit per token when the reward comes only at the end.
+\end{enumerate}
+
+{\small Most of the paper is about pre-training data (120B math tokens); GRPO is Sec.~4. KL coefficient 0.04, learning rate $10^{-6}$, batch 1024. GRPO later became the RL algorithm of DeepSeek-R1.}
+
+\subsection{Group-relative advantages}
+
+\begin{minipage}[c]{0.5\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=7cm, height=4.4cm, ybar, bar width=10pt, ymin=0, ymax=1,
+    xtick={1,...,6}, xticklabels={$o_1$,$o_2$,$o_3$,$o_4$,$o_5$,$o_6$}, ytick={0,0.5,1},
+    ylabel={reward $r_i$}, ylabel style={font=\scriptsize}, title={\small one question $q$, $G=6$ outputs}]
+  \fill[AtlasAccent!12] (axis cs:0.5,0.215) rectangle (axis cs:6.5,0.818);
+  \addplot[fill=AtlasCool!75, draw=none, bar shift=0pt] coordinates {(1,0.9)(3,0.7)(5,0.8)};
+  \addplot[fill=AtlasWarm!75, draw=none, bar shift=0pt] coordinates {(2,0.2)(4,0.4)(6,0.1)};
+  \draw[AtlasAccent, thick, dashed] (axis cs:0.5,0.517) -- (axis cs:6.5,0.517);
+  \node[font=\scriptsize, AtlasAccent, anchor=west] at (axis cs:6.5,0.517) {mean};
+  \node[font=\scriptsize, AtlasAccent, anchor=west] at (axis cs:6.5,0.818) {$+$std};
+\end{axis}
+\end{tikzpicture}\\
+{\scriptsize Toy rewards. Blue: above the mean (pushed up). Copper: below (pushed down).}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.47\linewidth}
+Sample $G$ outputs for the \textbf{same} question and score them:
+\begin{eqbox}
+\begin{gather*}
+  \hat A_{i,t} = \frac{r_i - \mathrm{mean}(\mathbf r)}{\mathrm{std}(\mathbf r)}
+\end{gather*}
+\end{eqbox}
+{\small The same value for every token $t$ of $o_i$ (outcome supervision).}
+\begin{itemize}
+  \item The group mean replaces $V(q)$: a critic computed \textbf{on the fly}.
+  \item Matches how RMs are trained: \textbf{comparisons} within one question.
+\end{itemize}
+\end{minipage}
+
+\begin{keybox}[title={Results}]
+RL on GSM8K + MATH questions only: GSM8K $82.9\to88.2\%$, MATH $46.8\to51.7\%$, and gains out of domain (CMATH $84.6\to88.8\%$).
+\end{keybox}
+
+\begin{notebox}
+\textbf{Process supervision} (Sec.~4.1.3): normalize per-step rewards across the group; token $t$ gets the sum of normalized rewards of the steps ending at or after $t$. It did better than outcome supervision. Sec.~5.2.2: RL improves Maj@K but not Pass@K --- it makes the output distribution more robust rather than adding new abilities.
+\end{notebox}
+
+\subsection{PPO vs.\ GRPO}
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize, >=Stealth,
+    b/.style={rectangle, rounded corners=2pt, thick, minimum height=0.62cm, align=center, inner sep=3pt}]
+  \node[font=\small\bfseries, anchor=east] at (-0.3,0) {PPO};
+  \node[b, cbox=AtlasSlate] (q1) at (0.3,0) {$q$};
+  \node[b, cbox=AtlasCool] (p1) at (1.8,0) {policy};
+  \node[b, cbox=AtlasSlate] (o1) at (3.4,0) {$o$};
+  \node[b, cbox=AtlasWarm] (r1) at (5.7,0.75) {reward model};
+  \node[b, cbox=AtlasSlate] (f1) at (5.7,0) {reference};
+  \node[b, cbox=AtlasWarm, line width=1.4pt] (v1) at (5.7,-0.75) {\textbf{value model}};
+  \node[b, cbox=AtlasSlate] (g1) at (8.4,0) {GAE};
+  \node[b, cbox=AtlasCool] (a1) at (10.2,0) {$A_t$ per token};
+  \foreach \x/\y in {q1/p1, p1/o1, o1/r1, o1/f1, o1/v1, r1/g1, f1/g1, v1/g1, g1/a1} \draw[->, AtlasSlate] (\x) -- (\y);
+  \node[font=\small\bfseries, anchor=east] at (-0.3,-2.2) {GRPO};
+  \node[b, cbox=AtlasSlate] (q2) at (0.3,-2.2) {$q$};
+  \node[b, cbox=AtlasCool] (p2) at (1.8,-2.2) {policy};
+  \node[b, cbox=AtlasSlate] (o2) at (3.4,-2.2) {$o_1,\dots,o_G$};
+  \node[b, cbox=AtlasWarm] (r2) at (5.7,-2.2) {reward model};
+  \node[b, cbox=AtlasSlate] (g2) at (8.4,-2.2) {group\\ mean, std};
+  \node[b, cbox=AtlasCool] (a2) at (10.2,-2.2) {$A_1,\dots,A_G$};
+  \node[b, cbox=AtlasSlate] (f2) at (5.7,-3.0) {reference};
+  \foreach \x/\y in {q2/p2, p2/o2, o2/r2, r2/g2, g2/a2} \draw[->, AtlasSlate] (\x) -- (\y);
+  \draw[->, AtlasSlate, dashed] (o2) |- node[pos=0.75, below, font=\tiny]{KL in the loss} (f2);
+\end{tikzpicture}
+\end{center}
+
+\begin{eqbox}
+\begin{gather*}
+  \mathcal J_{\mathrm{GRPO}}(\theta) = \E\Big[\frac1G\sum_{i=1}^G\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}
+    \Big\{\min\big(\rho_{i,t}\hat A_{i,t},\ \mathrm{clip}(\rho_{i,t},1\pm\varepsilon)\,\hat A_{i,t}\big)
+    - \beta\,\DKL\big[\pi_\theta\|\pi_{\mathrm{ref}}\big]\Big\}\Big]
+\end{gather*}
+\end{eqbox}
+{\small $\rho_{i,t}=\pi_\theta(o_{i,t}\mid q,o_{i,<t})/\pi_{\told}(o_{i,t}\mid q,o_{i,<t})$: still PPO's clipped ratio, per token.}
+
+\begin{enumerate}
+  \item \textbf{Critic gone}: the group statistics replace $V_\psi$ and GAE.
+  \item \textbf{KL moved}: PPO for LLMs adds the per-token KL to the reward, so it passes through GAE; GRPO puts it in the loss, which keeps $\hat A$ simple. KL estimator (``k3''): $\frac{\pi_{\mathrm{ref}}}{\pi_\theta}-\log\frac{\pi_{\mathrm{ref}}}{\pi_\theta}-1\ge0$, unbiased under samples from $\pi_\theta$.
+\end{enumerate}
+
+\begin{warnbox}[title={The clip never acts in their runs}]
+``The policy model only has a single update following each exploration stage'' (Sec.~4.2), so $\pi_\theta=\pi_{\told}$ when the gradient is taken: the ratio is 1 and the clip is inactive --- the gradient is \textbf{REINFORCE with a group baseline}. Iterative GRPO (Alg.~1) also retrains the RM and resets $\pi_{\mathrm{ref}}\leftarrow\pi_\theta$ between rounds.
+\end{warnbox}
+
+% ---------------------------------------------------------------------------
+\section{RLOO: back to REINFORCE}
+% ---------------------------------------------------------------------------
+
+\paper{Back to Basics: Revisiting REINFORCE-Style Optimization for Learning from Human Feedback in LLMs}
+  {Ahmadian, Cremer, Gall\'e, et al.\ (Cohere)}{ACL 2024}
+  {REINFORCE with a leave-one-out baseline beats PPO for RLHF}
+  {REINFORCE\_leave\_1\_out/}
+
+\begin{enumerate}
+  \item Standard RLHF: SFT $\to$ reward model $r_\phi$ $\to$ online RL.
+  \item KL-shaped reward per response: $R(x,y)=r_\phi(x,y)-\beta\log\frac{\pi_\theta(y\mid x)}{\pi_{\mathrm{ref}}(y\mid x)}$.
+  \item \textbf{Claim}: PPO's tools fight high variance from a \textbf{weak} start. A pretrained LLM is a \textbf{strong} start.
+  \item Reward only at \texttt{EOS}, deterministic dynamics $\Rightarrow$ treat $y$ as \textbf{one action}.
+\end{enumerate}
+
+{\small ``Strong initialization coupled with prompt conditioning leads to the concentration of probability mass on a few tokens at each generation step'' (Sec.~3.1). Models: Pythia 6.9B, Llama-7B; data: TL;DR and Anthropic-HH.}
+
+\subsection{Which parts of PPO does RLHF need?}
+
+\begin{minipage}[c]{0.44\linewidth}
+\centering
+\begin{tikzpicture}[font=\small,
+    layer/.style={fl, line width=0.8pt, text width=4.4cm, minimum height=0.8cm},
+    strike/.style={BadRed, line width=1.6pt}]
+  \node[font=\scriptsize, NoteGray] at (0,3.45) {PPO for RLHF, layer by layer};
+  \node[layer, cbox=AtlasWarm] (l1) at (0,2.7) {critic $V_\psi$ + GAE ($\lambda<1$)};
+  \node[layer, cbox=AtlasSlate] (l2) at (0,1.8) {ratio $\pi_\theta/\pi_{\mathrm{old}}$ + clipping};
+  \node[layer, cbox=AtlasSlate] (l3) at (0,0.9) {per-token actions};
+  \node[layer, cbox=AtlasCool, line width=1.2pt] (l0) at (0,0) {REINFORCE: $(R-b)\,\nabla\log\pi_\theta(y\mid x)$};
+  \draw[strike] (l1.west) -- (l1.east);
+  \draw[strike] (l2.west) -- (l2.east);
+  \draw[strike] (l3.west) -- (l3.east);
+\end{tikzpicture}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.53\linewidth}
+\begin{enumerate}
+  \item \textbf{\color{AtlasWarm}Bias for variance? Not worth it.} Reward falls steadily as $\lambda$ goes $1\to0$; $\lambda=1$ (no bootstrapping) is best.
+  \item \textbf{Clipping? Rarely active.} Clipped in $<5\%$ of each batch; removing ratio and clip does not hurt (``if anything a slight boost'').
+  \item \textbf{Tokens as actions? Not needed.} The whole response as one action works as well or better.
+\end{enumerate}
+\end{minipage}
+
+\begin{notebox}
+Callback to Parts III--IV: these are exactly the tools GAE and PPO added for robot control, where the start is a random policy. REINFORCE with a baseline vs.\ vanilla PG (per token): 70.7 vs.\ 70.4 (TL;DR), 37.9 vs.\ 36.4 (HH-Pythia), 55.3 vs.\ 52.3 (HH-Llama).
+\end{notebox}
+
+\subsection{The leave-one-out baseline}
+
+\begin{minipage}[c]{0.44\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[notes, width=6.2cm, height=4.2cm, ybar, bar width=12pt, ymin=0, ymax=1,
+    xtick={1,...,4}, xticklabels={$y_{(1)}$,$y_{(2)}$,$y_{(3)}$,$y_{(4)}$}, ytick=\empty,
+    ylabel={$R_i$}, ylabel style={font=\scriptsize}]
+  \addplot[fill=AtlasCool!80, draw=none, bar shift=0pt] coordinates {(1,0.8)};
+  \addplot[fill=AtlasSlate!35, draw=none, bar shift=0pt] coordinates {(2,0.3)(3,0.5)(4,0.4)};
+  \draw[AtlasAccent, thick, dashed] (axis cs:1.6,0.4) -- (axis cs:4.4,0.4) node[pos=0.5, above, font=\scriptsize]{$b_1$};
+  \draw[<->, AtlasCool, thick] (axis cs:1,0.4) -- node[left, font=\scriptsize]{$R_1-b_1$} (axis cs:1,0.8);
+\end{axis}
+\end{tikzpicture}\\
+{\scriptsize $b_1$ = mean of the \textbf{other} samples.}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.53\linewidth}
+$k$ samples $y_{(i)}\sim\pi_\theta(\cdot\mid x)$, rewards $R_i=R(y_{(i)},x)$:
+\begin{eqbox}
+\begin{gather*}
+  \frac1k\sum_{i=1}^k\Big[R_i-\underbrace{\frac{1}{k-1}\sum_{j\ne i}R_j}_{b_i}\Big]\nabla\log\pi_\theta(y_{(i)}\mid x)
+\end{gather*}
+\end{eqbox}
+The baseline does not depend on $y_{(i)}$ $\Rightarrow$ \textbf{unbiased}: $\E[b_i\nabla\log\pi(y_{(i)})]=0$.
+\end{minipage}
+
+\begin{slatebox}[title={GRPO's mean vs.\ leave-one-out}]
+GRPO's mean includes $y_{(i)}$ itself, but
+\begin{gather*}
+  R_i-\bar R = \tfrac{k-1}{k}\big(R_i-b_i\big),
+\end{gather*}
+the same up to scale. The real differences are the division by the \textbf{std} and the $1/|o_i|$ token average --- they reweight harder/easier questions and longer/shorter answers (cf.\ Liu et al., 2025, ``Understanding R1-Zero-Like Training'').
+\end{slatebox}
+
+\begin{keybox}[title={Results}]
+RLOO ($k=4$) beats PPO's win rate by 10.3 (TL;DR), 14.5 (HH, Pythia) and 32.1 (HH, Llama) points --- with \textbf{three models, no critic}. It also beats RAFT (fine-tune on the best of $k$) at the same sampling budget, and DPO.
+\end{keybox}
+
+% ---------------------------------------------------------------------------
+\section{Summary of Part V}
+% ---------------------------------------------------------------------------
+
+\subsection{What did we remove?}
+
+\begin{center}
+\small
+\begin{tabular}{l c c c c c}
+\toprule
+ & {\color{AtlasWarm}\textbf{Reward model}} & {\color{AtlasWarm}\textbf{Critic}} & \textbf{KL to $\pi_{\mathrm{ref}}$} & \textbf{Samples of $\pi_\theta$} & \textbf{Clip} \\
+\midrule
+InstructGPT (PPO) & \cmark & \cmark & \cmark{} {\scriptsize in reward} & \cmark & \cmark \\
+DPO & {\scriptsize implicit $\hat r_\theta$} & \xmark & \cmark{} {\scriptsize via $\beta$} & \xmark{} {\scriptsize offline} & \xmark \\
+GRPO & \cmark & \xmark{} {\scriptsize group} & \cmark{} {\scriptsize in loss} & \cmark{} {\scriptsize $G$ per $q$} & \cmark \\
+RLOO & \cmark & \xmark{} {\scriptsize leave-one-out} & \cmark{} {\scriptsize in reward} & \cmark{} {\scriptsize $k$ per $x$} & \xmark \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{pair}
+\begin{keybox}[title={Never removed: the KL to $\pi_{\mathrm{ref}}$}]
+The learned reward is only trusted near $\pi^{SFT}$: InstructGPT adds the KL ``to mitigate over-optimization of the reward model''; DPO: it keeps the policy ``from deviating too far from the distribution on which the reward model is accurate''.
+\end{keybox}
+\begin{coolbox}[title={Why the critic could go}]
+Many samples per prompt are cheap, and the prompt is the only real state.
+\end{coolbox}
+\end{pair}
+
+\subsection{The thread: from CPI to LLMs}
+
+\begin{center}
+\footnotesize
+\begin{tabularx}{\linewidth}{@{}>{\bfseries\raggedright\arraybackslash}p{2.5cm} L L L L@{}}
+\toprule
+ & \textbf{CPI} & \textbf{TRPO} & \textbf{PPO / GAE} & \textbf{LLMs} \\
+\midrule
+surrogate on old samples & policy advantage $\PA_{\pi,\mu}$ & $L_{\told}$ + importance weights & $L^{CPI}=\hat\E[r_t\hat A_t]$ & per-token ratio (GRPO) or plain REINFORCE \\
+stay close & mixture step $\alpha$ & KL trust region $\delta$ & clip $\epsilon$ & KL to $\pi_{\mathrm{ref}}$ ($\beta$): \textbf{a new reason} \\
+{\color{AtlasWarm}advantage / baseline} & $A_\pi$ from restarts & Monte Carlo $\hat Q$ & GAE$(\gamma,\lambda)$ with a critic & group mean / leave-one-out \\
+where states come from & $D$, restarts $\mu$ & $\rho_0$ (vine: resets) & $\rho_0$ & prompts $x\sim D$ \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{enumerate}
+  \item \textbf{Row 1}: PPO names its surrogate after CPI.
+  \item \textbf{Row 2}: the \emph{reason} changes. In CPI/TRPO/PPO the step is small so the surrogate stays accurate; in RLHF the KL to $\pi_{\mathrm{ref}}$ keeps the policy where the learned reward model is accurate. The old/new-policy closeness is often barely active (RLOO: clipped $<5\%$).
+  \item \textbf{Row 3}: the same bias--variance question, answered with less and less machinery as samples per prompt get cheap.
+  \item \textbf{Row 4}: the start distribution $D$ of Part~I is the prompt distribution; deterministic, known dynamics would even allow CPI-style restarts.
+\end{enumerate}
