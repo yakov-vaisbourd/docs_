@@ -78,16 +78,16 @@ Line numbers drift, so use the `\section` titles and frame `label=`s to find thi
 | Part (deck `\section`) | State | Notes / key frame labels |
 |---|---|---|
 | Conservative Policy Iteration | Drafted | Gaps 1–2, PDL (`pdl`), policy advantage (`policy-advantage`), improvement bound (`improvement-bound`), CPI algorithm (`cpi-alg`), summary (`cpi-summary`) |
-| Recap: Conservative Policy Iteration | Drafted | `two-lanes`, `pa-gradient` |
+| Recap: Conservative Policy Iteration | Drafted | `two-lanes`, `pa-gradient`, lean `pa-estimate-recap` (before `\againframe{cpi-alg}`) |
 | Trust Region Policy Optimization | Drafted | `cpi-to-trpo`, `trpo-thm1`, IS (`is-trpo`), CG + line search, `trpo-recap`, `trpo-noexplore` |
-| Generalized Advantage Estimation | Drafted | TD(λ) for advantages, actor–critic |
+| Generalized Advantage Estimation | Drafted | Only the paper-summary slide is active (other GAE frames commented out); its 2nd click shows the actor→critic update-order cycle (GAE Sec. 6.1) |
 | Proximal Policy Optimization | Drafted | Clipped surrogate, PPO in practice, TRPO vs. PPO |
 | Experiments | Drafted | TRPO MuJoCo/Atari, GAE γ/λ, PPO ablation, PPO vs. others, "Whole Story", "One Line per Paper" |
 | Appendix | Drafted | Proofs (`proof-pa-1`), Bertsekas & Tsitsiklis comparison (`bt-compare`), Gibbs policy, Hoeffding, IS (`is-cpi`), `trpo-continuous`, `trpo-connections` |
 | LLM bridge: InstructGPT / RLHF | Not started in Part 2 | Drafted in the Part 1 deck and in the document (Part V) |
 | DPO | Not started in Part 2 | Drafted in the Part 1 deck and in the document |
 | RLOO | Not started in Part 2 | Drafted in the Part 1 deck and in the document |
-| GRPO (DeepSeekMath) | Not started in Part 2 | Drafted in the Part 1 deck and in the document |
+| GRPO (DeepSeekMath) | Drafted in Part 2 | Bonus section `Bonus: From PPO to GRPO`, just before the Congratulations slide: `llm-as-rl`, paper panel, group advantages, PPO vs. GRPO, `grpo-lens` (variance full circle, two KLs, idle clip with 1 update/batch, RLOO one-liner). Frames adapted from Part 1 |
 | **Companion document** `doc/rl_notes.tex` | Drafted | Parts I–V + appendices A–L; results placed next to each method (the deck groups them in "Experiments") |
 
 States: Not started → Outlined → Drafted → Reviewed → Final.
@@ -117,5 +117,7 @@ Choices that guide how the talk is built. Add new ones at the bottom with a date
 
 One line per session, newest first.
 
+- 2026-11-10 (2): Fixed `sampling-details-1` link (stray `label=`); PPO clip captions say "objective keeps falling"; PPO-in-practice: MuJoCo table → notes, K-epochs box + δ line; GAE slide defines TD residual δ; added GRPO bonus section (5 frames) before Congratulations.
+- 2026-11-10: GAE summary slide: dropped the "later standard for PPO" bullet (moved to note); added a 2nd-click update-order cycle (rollout → Â from old V → TRPO → critic fit). Added lean `pa-estimate-recap` slide before `\againframe{cpi-alg}` in the recap.
 - 2026-11-09 (2): Wrote the companion document `doc/rl_notes.tex` (both decks, with plots and boxes); added the layout rule; found the dead `policy-advantage-recap` link in the deck.
 - 2026-11-09: Created this handoff file; mapped the deck, papers and folders; recorded status from the deck outline.
