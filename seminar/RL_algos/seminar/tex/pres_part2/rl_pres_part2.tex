@@ -2248,16 +2248,16 @@
        $\displaystyle\max_\theta\ \hat\E_t\Big[\frac{\pi_\theta(a_t\mid s_t)}{\pi_{\told}(a_t\mid s_t)}\,
          {\color{AtlasWarm}\hat A_t}\Big]\quad\text{s.t.}\quad
          {\color{AtlasCool}\bar D_{\mathrm{KL}}(\told,\theta)\le\delta}$};
-    \node[q, cbox=AtlasWarm] (adv) at (-3.0,-2.0)
+    \node[q, cbox=AtlasWarm] (adv) at (-3.0,-2.2)
       {\textbf{\color{AtlasWarm}Where does $\hat A_t$ come from?}\\ Monte Carlo returns:\\ unbiased, \textbf{high variance}};
-    \node[q, cbox=AtlasCool] (sol) at (3.0,-2.0)
+    \node[q, cbox=AtlasCool] (sol) at (3.0,-2.2)
       {\textbf{\color{AtlasCool}How is it solved?}\\ CG + line search: second order,\\ \textbf{one step} per batch};
     \draw[->, thick, AtlasWarm] (adv.north) -- (adv.north |- trpo.south);
     \draw[->, thick, AtlasCool] (sol.north) -- (sol.north |- trpo.south);
     \uncover<2->{
-      \node[q, cbox=AtlasWarm, fill=AtlasWarm!18!white] (gae) at (-3.0,-4.0)
-        {\textbf{GAE} \;{\scriptsize(2015)}\\ a value function trades\\ bias for variance via $\lambda$};
-      \node[q, cbox=AtlasCool, fill=AtlasCool!18!white] (ppo) at (3.0,-4.0)
+      \node[q, cbox=AtlasWarm, fill=AtlasWarm!18!white] (gae) at (-3.0,-4.5)
+        {\textbf{GAE} \;{\scriptsize(2015)}\\ a value function trades\\ variance for bias via $\lambda$};
+      \node[q, cbox=AtlasCool, fill=AtlasCool!18!white] (ppo) at (3.0,-4.5)
         {\textbf{PPO} \;{\scriptsize(2017)}\\ first order: clip the ratio,\\ $K$ epochs of SGD per batch};
       \draw[->, thick, AtlasWarm] (adv) -- node[right, font=\scriptsize]{fix} (gae);
       \draw[->, thick, AtlasCool] (sol) -- node[right, font=\scriptsize]{fix} (ppo);}
@@ -2286,6 +2286,8 @@
           $\hat A_t=\sum_l(\gamma\lambda)^l\delta_{t+l}$, with the \textbf{TD residual}
           {\color{AtlasWarm}$\delta_t = r_t+\gamma V(s_{t+1})-V(s_t)$} (itself a one-step advantage estimate).
       \end{itemize}
+      \vspace{4pt}
+      {\scriptsize\color{NoteGray} We keep the discounted setting of TRPO. The paper itself poses an \emph{undiscounted} problem and introduces $\gamma$ as a tool that trades variance for bias.\par}
     \end{column}
   \end{columns}
   \note{\footnotesize GAE, Sec.~1--2 and 6. The discounted problem is a special case (absorb $\gamma^t$ into a time-dependent reward). All quantities are unnormalized here, like TRPO and unlike CPI. The formula itself was proposed earlier (Kimura \& Kobayashi 1998; Wawrzy\'nski 2009); the paper's contribution is the analysis that makes it usable with batch trust-region methods, plus the trust-region value-function fit. GAE was used with TRPO here; PPO later adopts (truncated) GAE as its advantage estimator.}
@@ -2296,7 +2298,7 @@
 \begin{frame}{GAE: TD($\lambda$) for Advantages}
   \begin{columns}[T]
     \begin{column}{0.53\textwidth}
-      \centering\vspace*{2pt}
+      \centering\vspace*{-6pt}
       \small
       \eqstep{1}{\text{TD residual: one reward, then $V$}\\
         \delta_t^V = r_t + \gamma V(s_{t+1}) - V(s_t)}
@@ -2356,58 +2358,61 @@
           \draw[<->, thick, AtlasSlate] (0,-3.75) -- (5.3,-3.75);
           \node[font=\scriptsize, below] at (0,-3.8) {$\lambda=0$};
           \node[font=\scriptsize, below] at (5.3,-3.8) {$\lambda=1$};
-          \node[font=\tiny, align=center, below] at (1.0,-4.25) {low variance\\biased unless $V=V^{\pi,\gamma}$};
-          \node[font=\tiny, align=center, below] at (4.3,-4.25) {unbiased for $g^\gamma$, any $V$\\high variance};}
+          \node[font=\tiny, align=center, below] at (1.0,-4.25) {low variance\\biased unless $V=V_\pi$};
+          \node[font=\tiny, align=center, below] at (4.3,-4.25) {unbiased for any $V$\\high variance};}
       \end{tikzpicture}
     \end{column}
   \end{columns}
-  \note{\footnotesize GAE, Sec.~3, Eqs.~10--18. Same picture as our TD(0)$\to$MC slide in Part~I: TD($\lambda$) estimates a value, GAE estimates an advantage; the only change is the baseline $-V(s_t)$ at the start of every row. $\delta^V_t$ is an unbiased advantage estimate only if $V = V^{\pi,\gamma}$. The bias shrinks as $k$ grows because the bootstrapped term $\gamma^kV(s_{t+k})$ is discounted more, while $-V(s_t)$ never adds bias (it is a baseline). The geometric weights $(1-\lambda)\lambda^{k-1}$ sum to~1, and the sum collapses to a $(\gamma\lambda)$-discounted sum of TD residuals (Eq.~16). Unnormalized, like TRPO.}
+  \uncover<4->{%
+  \vspace{8pt}
+  {\scriptsize\color{NoteGray} $\hat A_t^{\mathrm{GAE}} = y_t^\lambda - V(s_t)$: the TD($\lambda$) target of Part~I (built with $V$) minus a baseline: TD($\lambda$) moved from values to advantages. Used earlier by Kimura \& Kobayashi (1998) and Wawrzy\'nski (2009).\par}}
+  \note{\footnotesize GAE, Sec.~3, Eqs.~10--18. Same picture as our TD(0)$\to$MC slide in Part~I: TD($\lambda$) estimates a value, GAE estimates an advantage; the only change is the baseline $-V(s_t)$ at the start of every row. $\delta^V_t$ is an unbiased advantage estimate only if $V = V_\pi$. Why $\lambda<1$ is biased only when $V$ is wrong: conditioned on $(s_t,a_t)$, $\E[\delta_t]=Q_\pi(s_t,a_t)-V_\pi(s_t)=A_\pi(s_t,a_t)$, while every later residual has $a_{t+l}\sim\pi$, so $\E[\delta_{t+l}]=0$ for $l\ge1$; down-weighting them by $\lambda^l$ then changes nothing in expectation. With an inaccurate $V$ the later residuals do not average to zero and $\lambda^l$ shifts the estimate. In practice $\lambda\in[0.9,0.99]$ (GAE Discussion; PPO uses $0.95$); App.~A.2: $\lambda=0$ was ``prohibitively biased. The bias shrinks as $k$ grows because the bootstrapped term $\gamma^kV(s_{t+k})$ is discounted more, while $-V(s_t)$ never adds bias (it is a baseline). The geometric weights $(1-\lambda)\lambda^{k-1}$ sum to~1, and the sum collapses to a $(\gamma\lambda)$-discounted sum of TD residuals (Eq.~16). Unnormalized, like TRPO.}
 \end{frame}
 
-% ---------------- Two knobs: gamma and lambda ----------------
-\begin{frame}{Two Knobs, Two Kinds of Bias}
-  \begin{columns}[c]
-    \begin{column}{0.5\textwidth}
-      \centering
-      \begin{tikzpicture}[x=0.9cm, y=1.6cm, >=Stealth,
-          declare function={raw(\x) = 0.25 + 0.55*exp(-0.18*\x) + 0.12*sin(deg(1.3*\x))*exp(-0.08*\x);
-                             shaped(\x) = 1.1*exp(-1.3*\x);}]
-        \draw[->, gray] (0,0) -- (6.3,0) node[right, font=\scriptsize]{$l$};
-        \draw[->, gray] (0,0) -- (0,1.35) node[left, font=\scriptsize]{$|\chi|$};
-        % windows first, curves on top
-        \fill[AtlasSlate!10] (0,0) rectangle (4.6,1.2);
-        \uncover<2->{\fill[AtlasWarm!18] (0,0) rectangle (1.8,1.2);}
-        \draw[dashed, AtlasSlate] (4.6,0) node[below, font=\scriptsize]{$\frac{1}{1-\gamma}$} -- (4.6,1.2);
-        \draw[AtlasSlate, very thick, domain=0:6.1, samples=80, smooth] plot (\x, {raw(\x)});
-        \node[AtlasSlate, font=\scriptsize] at (5.45,0.85) {raw reward};
-        \uncover<2->{
-          \draw[dashed, AtlasWarm] (1.8,0) node[below, font=\scriptsize]{$\frac{1}{1-\gamma\lambda}$} -- (1.8,1.2);
-          \draw[AtlasWarm, very thick, domain=0:6.1, samples=60, smooth] plot (\x, {shaped(\x)});
-          \node[AtlasWarm, font=\scriptsize, anchor=west] at (1.9,1.05) {shaped by $V$: $\delta^V$};}
-      \end{tikzpicture}\par\vspace{4pt}
-      {\scriptsize\color{NoteGray}$\chi(l;s,a)=\E[r_{t+l}\mid s,a]-\E[r_{t+l}\mid s]$: how long $a_t$ keeps mattering}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \small
-      \textbf{\color{AtlasSlate}$\gamma$: cut the horizon}\\
-      Drops effects after $\approx\frac{1}{1-\gamma}$ steps. \\
-      Biased \textbf{even with the exact} $V$.
-
-      \vspace{8pt}
-      \uncover<2->{
-        \textbf{\color{AtlasWarm}$\lambda$: shape, then cut again}\\
-        $\delta^V$ is the reward shaped by $\Phi = V$: a good $V$ pulls the effect of $a_t$ to $l\approx0$. \\
-        Biased \textbf{only if $V$ is wrong}.}
-
-      \vspace{8pt}
-      \uncover<3->{
-      \begin{slatebox}[top=3pt, bottom=3pt]
-        \small So the best $\lambda$ is \textbf{lower} than the best $\gamma$ (in practice $\lambda\in[0.9,0.99]$).
-      \end{slatebox}}
-    \end{column}
-  \end{columns}
-  \note{\footnotesize GAE, Sec.~3 (end) and Sec.~4. $\gamma$ sets the scale of $V^{\pi,\gamma}$ and adds bias regardless of the value function's accuracy; $\lambda<1$ adds bias only when $V$ is inaccurate --- hence the best $\lambda$ is much lower than the best $\gamma$. Reward shaping (Ng et al., 1999): $\tilde r = r + \gamma\Phi(s') - \Phi(s)$ leaves $A^{\pi,\gamma}$ unchanged; with $\Phi = V$ it is exactly $\delta^V$, and GAE is the $(\gamma\lambda)$-discounted sum of shaped rewards (Eq.~20). With $\Phi = V^{\pi,\gamma}$ the response of the shaped reward is nonzero only at $l=0$. Response function: Eq.~22, $A^{\pi,\gamma}(s,a)=\sum_l\gamma^l\chi(l;s,a)$. Curves are illustrative. Numbers: Sec.~6.3 (cart-pole: $\gamma\in[0.96,0.99]$, $\lambda\in[0.92,0.99]$); Discussion: $\lambda\in[0.9,0.99]$ ``usually'' best; App.~A.2: the $\lambda=0$ estimator was ``prohibitively'' biased.}
-\end{frame}
+% % ---------------- Two knobs: gamma and lambda ----------------
+% \begin{frame}{Two Knobs, Two Kinds of Bias}
+%   \begin{columns}[c]
+%     \begin{column}{0.5\textwidth}
+%       \centering
+%       \begin{tikzpicture}[x=0.9cm, y=1.6cm, >=Stealth,
+%           declare function={raw(\x) = 0.25 + 0.55*exp(-0.18*\x) + 0.12*sin(deg(1.3*\x))*exp(-0.08*\x);
+%                              shaped(\x) = 1.1*exp(-1.3*\x);}]
+%         \draw[->, gray] (0,0) -- (6.3,0) node[right, font=\scriptsize]{$l$};
+%         \draw[->, gray] (0,0) -- (0,1.35) node[left, font=\scriptsize]{$|\chi|$};
+%         % windows first, curves on top
+%         \fill[AtlasSlate!10] (0,0) rectangle (4.6,1.2);
+%         \uncover<2->{\fill[AtlasWarm!18] (0,0) rectangle (1.8,1.2);}
+%         \draw[dashed, AtlasSlate] (4.6,0) node[below, font=\scriptsize]{$\frac{1}{1-\gamma}$} -- (4.6,1.2);
+%         \draw[AtlasSlate, very thick, domain=0:6.1, samples=80, smooth] plot (\x, {raw(\x)});
+%         \node[AtlasSlate, font=\scriptsize] at (5.45,0.85) {raw reward};
+%         \uncover<2->{
+%           \draw[dashed, AtlasWarm] (1.8,0) node[below, font=\scriptsize]{$\frac{1}{1-\gamma\lambda}$} -- (1.8,1.2);
+%           \draw[AtlasWarm, very thick, domain=0:6.1, samples=60, smooth] plot (\x, {shaped(\x)});
+%           \node[AtlasWarm, font=\scriptsize, anchor=west] at (1.9,1.05) {shaped by $V$: $\delta^V$};}
+%       \end{tikzpicture}\par\vspace{4pt}
+%       {\scriptsize\color{NoteGray}$\chi(l;s,a)=\E[r_{t+l}\mid s,a]-\E[r_{t+l}\mid s]$: how long $a_t$ keeps mattering}
+%     \end{column}
+%     \begin{column}{0.48\textwidth}
+%       \small
+%       \textbf{\color{AtlasSlate}$\gamma$: cut the horizon}\\
+%       Drops effects after $\approx\frac{1}{1-\gamma}$ steps. \\
+%       Biased \textbf{even with the exact} $V$.
+%
+%       \vspace{8pt}
+%       \uncover<2->{
+%         \textbf{\color{AtlasWarm}$\lambda$: shape, then cut again}\\
+%         $\delta^V$ is the reward shaped by $\Phi = V$: a good $V$ pulls the effect of $a_t$ to $l\approx0$. \\
+%         Biased \textbf{only if $V$ is wrong}.}
+%
+%       \vspace{8pt}
+%       \uncover<3->{
+%       \begin{slatebox}[top=3pt, bottom=3pt]
+%         \small So the best $\lambda$ is \textbf{lower} than the best $\gamma$ (in practice $\lambda\in[0.9,0.99]$).
+%       \end{slatebox}}
+%     \end{column}
+%   \end{columns}
+%   \note{\footnotesize GAE, Sec.~3 (end) and Sec.~4. $\gamma$ sets the scale of $V^{\pi,\gamma}$ and adds bias regardless of the value function's accuracy; $\lambda<1$ adds bias only when $V$ is inaccurate --- hence the best $\lambda$ is much lower than the best $\gamma$. Reward shaping (Ng et al., 1999): $\tilde r = r + \gamma\Phi(s') - \Phi(s)$ leaves $A^{\pi,\gamma}$ unchanged; with $\Phi = V$ it is exactly $\delta^V$, and GAE is the $(\gamma\lambda)$-discounted sum of shaped rewards (Eq.~20). With $\Phi = V^{\pi,\gamma}$ the response of the shaped reward is nonzero only at $l=0$. Response function: Eq.~22, $A^{\pi,\gamma}(s,a)=\sum_l\gamma^l\chi(l;s,a)$. Curves are illustrative. Numbers: Sec.~6.3 (cart-pole: $\gamma\in[0.96,0.99]$, $\lambda\in[0.92,0.99]$); Discussion: $\lambda\in[0.9,0.99]$ ``usually'' best; App.~A.2: the $\lambda=0$ estimator was ``prohibitively'' biased.}
+% \end{frame}
 
 % ---------------- GAE + TRPO: one iteration, actor then critic ----------------
 \begin{frame}{One Iteration: Actor, then Critic}
@@ -2437,7 +2442,7 @@
       \small
       \begin{itemize}
         \item \textbf{\color{AtlasCool}Actor}: the policy network $\pi_\theta$, updated by TRPO.
-        \item \textbf{\color{AtlasWarm}Critic}: a second network $V_\phi(s)\approx V^{\pi,\gamma}(s)$, fitted by regression to the returns $\hat V_n=\sum_l\gamma^l r_{n+l}$.
+        \item \textbf{\color{AtlasWarm}Critic}: a second network $V_\phi(s)\approx V_\pi(s)$, fitted by regression to the returns $\hat V_n=\sum_l\gamma^l r_{n+l}$.
       \end{itemize}
       \uncover<2->{%
       {\color{AtlasWarm}\textbf{Value fit with a trust region}}
@@ -2692,8 +2697,8 @@
         \node[anchor=west] at (4.65,1.95) {environment samples};
       \end{tikzpicture}\par\vspace{6pt}
       \footnotesize
-      \only<1>{TRPO: one (expensive) step, then the batch is thrown away.}%
-      \only<2->{PPO: squeeze the same batch with cheap first-order steps.}
+      \only<1>{TRPO: one expensive second-order step per batch.}%
+      \only<2->{PPO: a similar step, built from many cheap first-order steps.}
     \end{column}
     \begin{column}{0.02\textwidth}
       {\color{AtlasSlate!40}\vrule width 0.6pt height 0.55\textheight}
@@ -2933,8 +2938,8 @@
 % ---------------- TRPO vs PPO ----------------
 \begin{frame}{TRPO vs.\ PPO}
   \begin{center}
-  \renewcommand{\arraystretch}{1.3}
-  \small
+  \renewcommand{\arraystretch}{1.15}
+  \footnotesize
   \begin{tabular}{l l l}
     \toprule
      & \textbf{TRPO} & \textbf{\color{AtlasCool}PPO} \\
@@ -2948,11 +2953,13 @@
     \bottomrule
   \end{tabular}
   \end{center}
-  \vspace{2pt}
+  \vspace{-4pt}
+  {\centering\footnotesize\textbf{\color{AtlasCool}PPO's gain:} the same trust-region idea, but \textbf{first order} (cheap, simple, shared networks) --- not fundamentally more sample-efficient (Engstrom et al., 2020).\par}
+  \vspace{-4pt}
   \begin{columns}[t]
     \begin{column}{0.48\textwidth}
       \begin{goodbox}
-        \small\textbf{Kept from CPI and TRPO}
+        \footnotesize\textbf{Kept from CPI and TRPO}
         \begin{itemize}
           \item Surrogate on the \textbf{old} samples
           \item The ratio $\pi_\theta/\pi_{\told}$
@@ -2962,7 +2969,7 @@
     \end{column}
     \begin{column}{0.48\textwidth}
       \begin{badbox}
-        \small\textbf{Given up}
+        \footnotesize\textbf{Given up}
         \begin{itemize}
           \item Any improvement \textbf{bound}
           \item An exact limit on the KL
@@ -2971,7 +2978,7 @@
       \end{badbox}
     \end{column}
   \end{columns}
-  \note{\footnotesize Our summary of PPO Sec.~1--5 and TRPO. TRPO's practical algorithm already dropped the guarantee (mean KL, fixed $\delta$, estimated advantages); PPO drops the remaining machinery and keeps the heuristic. ``Exact limit on the KL'': the clip only removes the incentive to move a ratio further; it does not enforce a bound (our remark; studied later, e.g.\ Engstrom et al., 2020, ``Implementation Matters in Deep Policy Gradients''). ``Advantages'' row: the original TRPO paper used Monte Carlo $\hat Q$; the GAE paper already ran TRPO with GAE. ``States'' row: lane~B of the CPI recap is untouched by both.}
+  \note{\footnotesize Our summary of PPO Sec.~1--5 and TRPO. TRPO's practical algorithm already dropped the guarantee (mean KL, fixed $\delta$, estimated advantages); PPO drops the remaining machinery and keeps the heuristic. ``Exact limit on the KL'': the clip only removes the incentive to move a ratio further; it does not enforce a bound (our remark; studied later, e.g.\ Engstrom et al., 2020, ``Implementation Matters in Deep Policy Gradients''). ``Advantages'' row: the original TRPO paper used Monte Carlo $\hat Q$; the GAE paper already ran TRPO with GAE. ``States'' row: lane~B of the CPI recap is untouched by both. ``PPO's gain'' line (our reading): both methods take one bounded improvement per batch; TRPO's single step already goes to the KL boundary, so PPO's $K$ epochs do not let it move further on the same data --- they reach a similar step more cheaply. PPO's paper does report better scores than TRPO on several MuJoCo tasks, but Engstrom et al.\ (2020, ``Implementation Matters in Deep Policy Gradients'', ICLR) show that much of that gap comes from code-level optimizations in the PPO implementation (value-function clipping, reward scaling, observation normalization, learning-rate annealing, orthogonal initialization, etc.), not from the clipped objective itself; TRPO given the same optimizations closes much of the gap.}
 \end{frame}
 
 % % ===========================================================================
