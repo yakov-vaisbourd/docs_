@@ -97,6 +97,7 @@ The ratio is TRPO's importance weight:
 
 % ---------------------------------------------------------------------------
 \section{The clipped surrogate objective}
+\label{sec:ppo-clip}
 % ---------------------------------------------------------------------------
 
 \begin{eqbox}
@@ -225,7 +226,200 @@ clip $\epsilon$ & 0.2 & $0.1\alpha$ \\
 {\scriptsize\color{NoteGray}PPO Tables 3, 5. Atari: $\alpha$ annealed $1\to0$, $c_1=1$, $c_2=0.01$.}
 \end{minipage}
 
-{\small $K$ epochs on the same batch is the point: TRPO took \textbf{one} step per batch. Truncated GAE does not look beyond the segment end $T$, which suits fixed-length segments and recurrent nets.}
+{\small $K$ epochs on the same batch is the point: TRPO took \textbf{one} step per batch. What ``truncated'' means and where the segments come from: \S\ref{sec:ppo-truncgae}. Why the reuse is safe: \S\ref{sec:ppo-reuse}.}
+
+% ---------------------------------------------------------------------------
+\subsection{Truncated GAE and the stream of segments}
+\label{sec:ppo-truncgae}
+% ---------------------------------------------------------------------------
+
+\textbf{Not a new estimator.} It is GAE (\S\ref{sec:gae-def}) with the sum stopped at the end of the data segment. PPO calls it ``a truncated version of generalized advantage estimation''. What is new is the way the data is collected.
+
+\begin{enumerate}
+  \item \textbf{Start: the A3C estimator} (Mnih et al.\ 2016). Run the policy for $T$ steps, $T$ \textbf{much less than the episode length}, and bootstrap at the cut:
+  \begin{gather*}
+    \hat A_t = -V(s_t) + r_t + \gamma r_{t+1} + \dots + \gamma^{T-t-1} r_{T-1} + \gamma^{T-t} V(s_T)
+  \end{gather*}
+  This is GAE's $\hat A_t^{(k)}$ with $k = T-t$: every position looks exactly up to the cut.
+  \item \textbf{Generalize with $\lambda$} (PPO Eqs.~11--12):
+\end{enumerate}
+
+\begin{eqbox}
+\begin{gather*}
+  \hat A_t = \sum_{l=0}^{T-t-1}(\gamma\lambda)^l\,\delta_{t+l},
+  \qquad \delta_t = r_t + \gamma V(s_{t+1}) - V(s_t),
+  \qquad \lambda=1 \;\Rightarrow\; \text{step 1}
+\end{gather*}
+\end{eqbox}
+
+\begin{notebox}
+\textbf{Typo in the paper.} PPO prints the last terms as $\gamma^{T-t+1}r_{T-1}$ and $(\gamma\lambda)^{T-t+1}\delta_{T-1}$. The last term sits $T-1-t$ steps after $t$, so the exponent is $T-t-1$ (as above, and on the slide).
+\end{notebox}
+
+\textbf{What the cut does.} Every $k$-step return that would reach past $T$ is replaced by the one that stops at $T$. Equivalently, $\lambda$ is set to $0$ at the boundary: all the weight that full GAE puts on the future after $T$ goes to $V(s_T)$. So the only new bias comes from \textbf{trusting $V(s_T)$}, and it depends on the position:
+
+\begin{pair}
+\begin{warmbox}[title={Near the end of a segment ($T-t$ small)}]
+\small Few real rewards, then $V(s_T)$: almost TD(0). Higher bias, lower variance.
+\end{warmbox}
+\begin{coolbox}[title={Near the start ($T-t$ large)}]
+\small Almost the full $\lambda$-return. The weight $(\gamma\lambda)^l$ is below $1\%$ after $\approx 75$ steps ($\gamma\lambda\approx0.94$).
+\end{coolbox}
+\end{pair}
+
+{\small With $T=2048$ (MuJoCo) only the last few dozen steps of a segment are affected; with $T=128$ (Atari) a much larger share is.}
+
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{@{}l L L@{}}
+\toprule
+ & \textbf{GAE paper} (Schulman et al.\ 2015) & \textbf{\color{AtlasCool}PPO} \\
+\midrule
+definition & infinite sum $\sum_{l\ge0}(\gamma\lambda)^l\delta_{t+l}$ & sum stops at the segment end $T$ \\
+data & whole episodes (to a terminal state or 2000 steps), batches of 50k--200k steps & $N$ parallel actors $\times$ $T$ steps, usually cut \textbf{mid-episode} \\
+end of the data & the episode ended: $V(\text{terminal})=0$, nothing lost & \textbf{bootstrap} with $V(s_T)$ (hidden inside $\delta_{T-1}$) \\
+$T$, $\gamma$, $\lambda$ & --- & $T=2048 / 512 / 128$ (MuJoCo / Roboschool / Atari); $\gamma=0.99$, $\lambda=0.95$ \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsubsection*{Segments are windows on one continuing stream}
+
+The environment is \textbf{not} reset at the start of each iteration. Each actor plays episodes back to back; the segments only cut this stream into pieces of length $T$.
+
+\begin{center}
+\begin{tikzpicture}[x=1.15cm, y=1cm, font=\scriptsize, >=Stealth,
+    ep/.style={rounded corners=2pt, draw=white, line width=1pt},
+    term/.style={star, star points=5, star point ratio=2.2, fill=GoodGreen, inner sep=0pt, minimum size=0.28cm},
+    boot/.style={circle, draw=AtlasWarm, very thick, fill=white, minimum size=0.22cm, inner sep=0pt}]
+  % episodes on the stream
+  \fill[ep, fill=AtlasSlate!30] (0,0) rectangle (2.2,0.5);   \node at (1.1,0.25) {episode 1};
+  \fill[ep, fill=AtlasSlate!15] (2.2,0) rectangle (6.6,0.5); \node at (4.4,0.25) {episode 2};
+  \fill[ep, fill=AtlasSlate!30] (6.6,0) rectangle (8.0,0.5); \node at (7.3,0.25) {ep.\ 3};
+  \fill[ep, fill=AtlasSlate!15] (8.0,0) rectangle (12,0.5);  \node at (10,0.25) {episode 4 \dots};
+  \draw[->, gray] (0,-0.1) -- (12.4,-0.1) node[right]{time};
+  % episode ends
+  \foreach \x in {2.2, 6.6, 8.0} \node[term] at (\x,0.75) {};
+  \node[GoodGreen!60!black, anchor=south east] at (2.3,0.9) {end: real reward};
+  % segment boundaries and bootstrap points
+  \foreach \x in {3,6,9,12} {
+    \draw[AtlasCool, dashed, thick] (\x,-0.35) -- (\x,1.25);
+    \node[boot] at (\x,0.25) {};}
+  \node[AtlasWarm, anchor=south] at (6,1.25) {cut: bootstrap $V(s_T)$};
+  \draw[AtlasCool, dashed, thick] (0,-0.35) -- (0,1.25);
+  \foreach \a/\k in {0/1, 3/2, 6/3, 9/4}
+    \draw[decorate, decoration={brace, amplitude=4pt, mirror}, AtlasCool] (\a+0.05,-0.4) -- node[below=4pt]{iteration \k: $T$ steps} (\a+2.95,-0.4);
+\end{tikzpicture}\\
+{\scriptsize Schematic, one actor. Episode 2 starts in iteration 1 and ends in iteration 3, played by three successive policies.}
+\end{center}
+
+\begin{enumerate}
+  \item \textbf{An episode cut at $T$} continues in the next iteration, with the updated policy. Inside the segment, the sum stops at $T-1$ and $V(s_T)$ fills in the rest.
+  \item \textbf{An episode that ends inside a segment}: the $\delta$ at the last step uses $V(\text{terminal})=0$, the sum stops there (implementations multiply by $1-\text{done}$), the environment resets, and a new episode starts in the same segment.
+  \item \textbf{Hence every episode end lands in exactly one segment.} No reward is lost: each result is seen once.
+  \item \textbf{The ``luck'' is per position, not per episode}: does the end of its episode fall in the \emph{same} segment, after $t$? Yes $\Rightarrow$ the real result is in $\hat A_t$. No $\Rightarrow$ $\hat A_t$ bootstraps from $V(s_T)$.
+\end{enumerate}
+
+\begin{notebox}
+\textbf{Source.} PPO does not state the no-reset rule; Alg.~1 only says ``run policy $\pi_{\told}$ in environment for $T$ timesteps''. It follows from ``$T$ much less than the episode length'' (Sec.~5, after A3C): with a reset every iteration, no episode would ever get past its first $T$ steps. OpenAI Baselines' PPO runner keeps each environment's state across updates. Related detail: an episode stopped by a \textbf{time limit} (not a real terminal state) should arguably bootstrap instead of using $V=0$ (Pardo et al.\ 2018, ``Time Limits in Reinforcement Learning'').
+\end{notebox}
+
+\subsubsection*{Delayed reward: what if the reward comes only at the end?}
+
+Example: chess, $r_t=0$ until the result ($+1/0/-1$).
+
+\begin{enumerate}
+  \item \textbf{A segment without an episode end} has only $\delta_t=\gamma V(s_{t+1})-V(s_t)$: $\hat A_t$ is built \textbf{from $V$ alone}. Early in training these samples carry no information --- about zero gradient if $V$ starts near a constant, noise otherwise. Wasted, but not a systematic push.
+  \item \textbf{Segments with an episode end} contain the real reward at the last step.
+  \item \textbf{The critic is refit every iteration} to $V_t^{\mathrm{targ}}=\hat A_t+V(s_t)$, a truncated $\lambda$-return. States near an end get targets anchored to the real result.
+  \item \textbf{The anchoring spreads backward}: earlier states bootstrap from values that are now correct, and so on. $\lambda$ speeds this up: one fit already carries the result back $\approx 1/(1-\gamma\lambda)\approx17$ steps with real weight (TD(0): one step per fit).
+\end{enumerate}
+
+\begin{thmbox}{Why a bad initial $V$ does not bias the end result (tabular)}
+The $\lambda$-return operator is a contraction with modulus
+\begin{gather*}
+  \frac{\gamma(1-\lambda)}{1-\gamma\lambda} \approx 0.83 \qquad (\gamma=0.99,\ \lambda=0.95),
+\end{gather*}
+so the effect of the initialization shrinks geometrically with each sweep. With a neural network this is a heuristic, not a guarantee --- the same mechanism as TD learning.
+\end{thmbox}
+
+\begin{keybox}
+The initial $V$ changes \textbf{how fast} learning starts, not \textbf{where it ends}. Classic example: TD-Gammon (backgammon, reward only at the end, random initial network, TD($\lambda$) bootstrapping).
+\end{keybox}
+
+\textbf{How often does a position see the real result?} Episode length $L$ (agent steps), segment length $T$:
+
+\begin{pair}
+\begin{coolbox}[title={$T\ge L$ (chess: $T=2048$, $L\approx40$--$100$)}]
+\small Almost every segment contains one or more episode ends. Most positions see their own result; only the tail of each segment bootstraps. Truncation hardly matters.
+\end{coolbox}
+\begin{warmbox}[title={$T\ll L$ (e.g.\ $T=128$, $L$ in the thousands)}]
+\small Only $\approx T/L$ of the segments contain an end. Most positions bootstrap; the backward spread through $V$ does most of the work, and learning is slower.
+\end{warmbox}
+\end{pair}
+
+\begin{warnbox}[title={Other options, and the discount}]
+\begin{itemize}
+  \item Truncation is a \textbf{choice}, not part of GAE. For short games: $T\ge$ the maximum length, or collect whole games --- then nothing depends on a bootstrapped $V(s_T)$.
+  \item The discount also weakens a delayed reward: $0.99^{80}\approx0.45$. For much longer horizons $\gamma$ is the bigger problem.
+  \item AlphaZero does not bootstrap its value at all: it regresses $V$ to the final outcome $z$ (Monte Carlo); MCTS supplies the policy improvement.
+\end{itemize}
+\end{warnbox}
+
+\begin{notebox}
+\textbf{Link to Part V.} An LLM response is an episode with a reward only at the last token --- chess's structure. RLHF with PPO uses \textbf{whole responses} (no truncation), plus a per-token KL penalty that puts some reward on every token. DeepSeekMath names the remaining problem: ``usually only the last token is assigned a reward score by the reward model, which may complicate the training of a value function that is accurate at each token''. GRPO and RLOO (\S\ref{sec:grpo}) \textbf{drop the critic}: their baseline is the mean reward of other sampled responses to the same prompt --- Monte Carlo, no bootstrapping.
+\end{notebox}
+
+\src{PPO Sec.~5 (Eqs.~10--12, Alg.~1), Tables 3--5; GAE Sec.~3 and 6; DeepSeekMath Sec.~4.1. Contraction modulus: Bertsekas \& Tsitsiklis, \emph{Neuro-Dynamic Programming}. The stream reading, the chess discussion and the numbers ($\approx17$, $\approx75$, $0.83$) are ours.}
+
+% ---------------------------------------------------------------------------
+\subsection{Why clipping makes batch reuse safe}
+\label{sec:ppo-reuse}
+% ---------------------------------------------------------------------------
+
+Step 3 of Alg.~1 uses the \textbf{same} batch $K$ times. Follow one sample with $\hat A_t>0$ through the epochs:
+
+\begin{minipage}[c]{0.47\linewidth}
+\centering
+\begin{tikzpicture}[x=1.15cm, y=0.55cm, >=Stealth, font=\scriptsize]
+  \fill[GoodGreen!15] (0,0.6) rectangle (4.3,2);
+  \node[font=\tiny, text=GoodGreen!60!black, anchor=west] at (0.1,0.3) {data trustworthy};
+  \draw[->, gray] (0,0) -- (4.4,0) node[right]{epoch};
+  \draw[->, gray] (0,0) -- (0,5.6) node[above]{$r_t=\frac{\pi_\theta(a_t|s_t)}{\piold(a_t|s_t)}$};
+  \foreach \k in {0,...,4} \draw (\k,0) -- (\k,-0.12) node[below, font=\tiny]{\k};
+  \draw (0,1) -- (-0.08,1) node[left, font=\tiny]{$1$};
+  \draw[dotted, gray] (0,2) node[left, font=\tiny, text=black]{$1{+}\epsilon$} -- (4.3,2);
+  \draw[gray, dashed, thick] (0,1) -- (1,1.5) -- (2,2.4) -- (3,3.3) -- (4,5);
+  \node[font=\tiny, text=gray, anchor=east] at (3.9,5.0) {$L^{CPI}$: keeps rising};
+  \draw[AtlasCool, very thick] (0,1) -- (1,1.5) -- (1.55,2) -- (4,2);
+  \foreach \k/\r in {0/1, 1/1.5, 2/2, 3/2, 4/2} \fill[AtlasCool] (\k,\r) circle (2pt);
+  \node[font=\tiny, text=AtlasCool, anchor=north] at (3.1,1.85) {$L^{CLIP}$: gradient $=0$};
+\end{tikzpicture}\\
+{\scriptsize Illustrative, not to scale. Same batch at every epoch.}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.5\linewidth}
+\begin{enumerate}
+  \item \textbf{Epoch 1:} all $r_t\approx1$, so $L^{CLIP}\approx L^{CPI}$ --- an ordinary policy-gradient step.
+  \item \textbf{Later epochs:} once $r_t$ leaves $[1-\epsilon,1+\epsilon]$ in the \textbf{improving} direction, its term is flat: \textbf{zero gradient}, it stops pushing.
+  \item Samples still inside the band keep training.
+  \item Samples that moved the \textbf{wrong} way are not clipped: they keep their gradient and are pulled back (the two plots in \S\ref{sec:ppo-clip}).
+\end{enumerate}
+\end{minipage}
+
+\begin{keybox}
+Each sample \textbf{switches itself off} once it has moved ``enough''. No KL solver is needed, so the batch can be squeezed for $K$ epochs ($K=10$ on MuJoCo) instead of TRPO's one step --- more updates per environment step.
+\end{keybox}
+
+\begin{pair}
+\begin{slatebox}[title={Evidence: the ablation}]
+\small The same $K$-epoch schedule \textbf{without} clipping or penalty scores $-0.39$, worse than random (PPO Table~1, \S\ref{sec:ppo-ablation}). Reuse is safe \textbf{because} of the clip.
+\end{slatebox}
+\begin{warnbox}[title={Caveat}]
+\small ``Switched off'' samples can still drift through shared parameters, moved by the others' gradients: the clip removes the \textbf{incentive}, not every possibility, of moving further (box ``Clipping is an incentive, not a limit'', \S\ref{sec:ppo-clip}). Many implementations add early stopping on the KL.
+\end{warnbox}
+\end{pair}
+
+\src{Our explanation of PPO's abstract (``enables multiple epochs of minibatch updates'') and Sec.~3; ablation from Table~1.}
 
 % ---------------------------------------------------------------------------
 \section{TRPO vs.\ PPO}

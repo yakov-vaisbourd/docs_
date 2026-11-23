@@ -1896,8 +1896,10 @@
           \max_\theta\ L_{\told}(\theta) \\
           \text{s.t.}\ \ \DKL^{\max}(\told,\theta) \le \delta
         \end{gather*}
-        {\small 
-        $\delta$ is in policy space, so it transfers across problems ($\delta = 0.01$ in all experiments).}
+        {\small
+        The actual step: start from the $\delta$-step and \textbf{backtrack}.
+        Testing $L - C\,\DKL^{\max}$ keeps the guarantee;
+        TRPO tests only $L\uparrow$ and KL $\le\delta$ (\hyperlink{trpo-cg-ls}{step~5}).}
       \end{coolbox}
     \end{column}
   \end{columns}
@@ -1905,7 +1907,7 @@
   \simpfooter{$C=\frac{4\epsilon\gamma}{(1-\gamma)^2}$: at $\gamma=0.99$, $C\approx4\cdot10^4\,\epsilon$ $\Rightarrow$ tiny steps.}
     {A hard limit $\delta$ on the KL replaces the penalty $C$: we optimize $L$ where we \emph{trust} it.}
     {The guarantee becomes a heuristic; $\delta$ is a hyperparameter.}
-  \note{\footnotesize TRPO, Sec.~4, Eqs.~10--11, and the summary at the end of Sec.~6. Paper: ``if we used the penalty coefficient $C$ recommended by the theory above, the step sizes would be very small''. The constraint is the Lagrangian dual view of the penalty: each $\delta$ corresponds to some $C$, but $\delta$ lives in policy space and transfers across problems.}
+  \note{\footnotesize TRPO, Sec.~4, Eqs.~10--11, and the summary at the end of Sec.~6. Paper: ``if we used the penalty coefficient $C$ recommended by the theory above, the step sizes would be very small''. The constraint is the Lagrangian dual view of the penalty: each $\delta$ corresponds to some $C$, but $\delta$ lives in policy space and transfers across problems ($\delta=0.01$ in all experiments). Backtracking (ours): since $L$ and $\eta$ agree to first order and the KL is second order, a small enough step always improves $\eta$; backtracking from the $\delta$-step until $M=L-C\,D^{\max}_{\mathrm{KL}}$ improves keeps the guarantee ($\eta(\theta)\ge M(\theta)>M(\told)=\eta(\told)$), but with the theoretical $C$ it shrinks back to tiny steps. TRPO's test is weaker; see step~5.}
 \end{frame}
 
 % ---------------- Max KL -> mean KL ----------------
@@ -1922,7 +1924,7 @@
   \end{formulabox}
   \simpfooter{$\DKL^{\max}$ is one constraint \textbf{per state}, also at states we never sample.}
     {An \textbf{expectation} over visited states $\Rightarrow$ estimated from the same rollouts.}
-    {Rarely visited states may change a lot. Empirically like max KL (results at the end).}
+    {Rarely visited states may change a lot. Empirically like max KL.}
   \note{\footnotesize TRPO, Sec.~4, Eq.~12: ``This problem imposes a constraint that the KL divergence is bounded at every point in the state space. While it is motivated by the theory, this problem is impractical to solve due to the large number of constraints.'' The max-KL version was only tractable on cart-pole; it learned somewhat more slowly (Sec.~8.1).}
 \end{frame}
 
@@ -1973,7 +1975,8 @@
         \centering\small\textbf{\color{AtlasWarm}Single path}
       \end{warmbox}
       \vspace{4pt}
-      {\small Roll out $\pi_{\told}$ and use \textbf{every} $(s,a)$ pair encountered along the trajectory.}
+      {\small Roll out $\pi_{\told}$ and use \textbf{every} $(s,a)$ pair encountered along the trajectory.}\par\vspace{4pt}
+      {\footnotesize\color{AtlasWarm!80!black}Actions were picked by $\pi_{\told}$ $\Rightarrow$ $q=\pi_{\told}$ \textbf{(forced)}}
     \end{column}
     \begin{column}{0.48\textwidth}
       \centering
@@ -1982,20 +1985,21 @@
         \centering\small\textbf{\color{AtlasCool}Vine}
       \end{coolbox}
       \vspace{4pt}
-      {\small From selected states in a trunk rollout, branch out: try multiple actions and run short rollouts.}
+      {\small From selected states in a trunk rollout, branch out: try multiple actions and run short rollouts.}\par\vspace{4pt}
+      {\footnotesize\color{AtlasCool!80!black}Branch actions are picked by \emph{us} $\Rightarrow$ $q$ is \textbf{free}}
     \end{column}
   \end{columns}
-  \note{\footnotesize TRPO, Sec.~5.1--5.2, Fig.~1 (figure cropped from the arXiv PDF, p.~4). This slide introduces the two schemes visually; details on the next slide.}
+  \note{\footnotesize TRPO, Sec.~5.1--5.2, Fig.~1 (figure cropped from the arXiv PDF, p.~4). This slide introduces the two schemes visually; details on the next slide. The coloured lines answer why the previous slide wrote a general $q$: in single path the data already fixes $q=\pi_{\told}$ (Sec.~5.1, ``Hence, $q(a\mid s)=\pi_{\theta_{\text{old}}}(a\mid s)$''); only vine lets us choose which actions to try.}
 \end{frame}
 
 % ---------------- Single path vs vine - part 2 ----------------
-\begin{frame}{Single Path vs Vine: How They Work}
+\begin{frame}[label=sp-vine]{Single Path vs Vine: How They Work}
   \begin{columns}[t]
     \begin{column}{0.48\textwidth}
       \begin{warmbox}
         \small\textbf{\color{AtlasWarm}Single path}
         \begin{itemize}\small
-          \item Sampling distribution: $q = \pi_{\told}$
+          \item $q = \pi_{\told}$: \textbf{forced} by the data
           \item $\hat Q$ from discounted return-to-go
           \item Uses \textbf{every} state-action pair
           \item \textbf{No resets needed}
@@ -2008,21 +2012,21 @@
       \begin{coolbox}
         \small\textbf{\color{AtlasCool}Vine}
         \begin{itemize}\small
-          \item From each state in rollout set: try $K$ actions $a_k\sim q$
-          \item Short rollout per action (CRN)
-          \item \textbf{Lower variance} $\hat Q$
+          \item Per state: $K$ actions $a_k\sim q$, short rollouts
+          \item $q$ \textbf{free}: $\pi_{\told}$ (MuJoCo), uniform (Atari)
+          \item \textbf{Lower var.}: same $s_n$ + \hyperlink{crn}{\beamergotobutton{CRN}}
           \item Needs \textbf{state resets}
         \end{itemize}
       \end{coolbox}
       \vspace{6pt}
-      {\footnotesize\color{AtlasCool!80!black}\textbf{When:} Simulators with reset capability --- resets only to states from $\rho_0$ rollouts (not arbitrary $\mu$ like CPI).}
+      {\footnotesize\color{AtlasCool!80!black}\textbf{When:} Simulators that can reset to rollout states.}
     \end{column}
   \end{columns}
   \vspace{4pt}
   \begin{noteframe}
-    \small\textbf{Key limitation both share:} Only actions are reweighted by $\pi_\theta/\pi_{\told}$. States still come from $s\sim\rho_{\told}$ (cannot reweight states without knowing $\rho_\theta/\rho_{\told}$).
+    \small\textbf{Key limitation both share:} Only actions are reweighted (by $\pi_\theta/q$); states still come from $\rho_{\told}$ ($\rho_\theta/\rho_{\told}$ is unknown).
   \end{noteframe}
-  \note{\footnotesize TRPO, Sec.~5.1--5.2. Single path: uses every $(s_n,a_n)$ from trajectories under $\pi_{\told}$. Vine: from a subset of states (the rollout set), branch into several actions $a_1,a_2$, each followed by a rollout using common random numbers (CRN) to reduce variance. Vine with continuous actions uses self-normalized importance-sampling estimator (removes need for baseline). $q=\pi_{\theta_i}$ for continuous control, uniform for Atari (``can sometimes achieve better exploration''). Vine reset states: ``a subset of $N$ states along these trajectories'' from $s_0\sim\rho_0$ (Sec.~5.2), so unlike CPI's $\mu$ they add no new states. The key limitation (only action reweighting) applies to both and is why TRPO cannot run offline.}
+  \note{\footnotesize TRPO, Sec.~5.1--5.2. Single path: uses every $(s_n,a_n)$ from trajectories under $\pi_{\told}$. Vine: from a subset of states (the rollout set), branch into several actions $a_1,a_2$, each followed by a rollout using common random numbers (CRN) to reduce variance. Lower variance (Sec.~5.2: ``much lower variance given the same number of $Q$-value samples''; ``much better estimates of the advantage values'') has two sources: (i) the $K$ actions share the state $s_n$, so their $\hat Q$'s can be compared directly, while single path has one action per state and must compare across states (and $\hat Q$ there is a full noisy return-to-go); (ii) CRN on top, which makes those same-state differences less noisy (appendix slide). Vine with continuous actions uses self-normalized importance-sampling estimator (removes need for baseline). $q=\pi_{\theta_i}$ for continuous control, uniform for Atari (``can sometimes achieve better exploration''). Vine reset states: ``a subset of $N$ states along these trajectories'' from $s_0\sim\rho_0$ (Sec.~5.2), so unlike CPI's $\mu$ they add no new states. The key limitation (only action reweighting) applies to both and is why TRPO cannot run offline.}
 \end{frame}
 
 % ---------------- Solver 1: direction ----------------
@@ -2044,7 +2048,7 @@
 \end{frame}
 
 % ---------------- Solver 2+3: CG, step size, line search ----------------
-\begin{frame}{Computing the Step: Conjugate Gradient + Line Search}
+\begin{frame}[label=trpo-cg-ls]{Computing the Step: Conjugate Gradient + Line Search}
   \noindent\hfill\trpostep{5}\hfill\null\par\vspace{3pt}
   \begin{columns}[T]
     \begin{column}{0.65\textwidth}
@@ -2087,8 +2091,8 @@
   \end{columns}
   \simpfooter{$A$ cannot even be stored for a neural net; the quadratic model is only local.}
     {CG with Fisher-vector products; full step to $\delta$; line search on the true $L$ and KL.}
-    {Second order and \textbf{one step per batch} --- PPO's starting point.}
-  \note{\footnotesize TRPO, App.~C and C.1. Conjugate gradient solves $As=g$ with $k$ matrix--vector products and never forms $A$. Fisher-vector product: if the network outputs distribution parameters $\mu_\theta(x)$, then $A=J^\top MJ$ with $J=\partial\mu/\partial\theta$ and $M$ the Fisher matrix of the distribution w.r.t.\ $\mu$ (analytic); $Jy$ and $J^\top v$ are a forward-mode and a backprop pass (the second-derivative term of $\mu$ vanishes at $\theta=\told$). Alternative: generic Hessian-vector products of $\bar D_{\mathrm{KL}}$ --- slightly slower, easier to implement. FVPs on $\sim$10\% of the data, so the total cost is about one gradient. Step size: $s^\top As$ comes for free from CG. Line search objective: $L_{\told}(\theta)-\mathcal X[\bar D_{\mathrm{KL}}\le\delta]$, $\mathcal X=0$ if true, $+\infty$ otherwise; exponential shrinking. Paper: without the line search the algorithm occasionally takes large steps that cause catastrophic drops. Figure (ours, illustrative): the ellipse is $\frac12\Delta^\top A\Delta=\delta$; the dashed region is where the real mean KL is below $\delta$ --- the full step and $\beta/2$ fail, $\beta/4$ is accepted.}
+    {Second order, \textbf{one step per batch} --- PPO's starting point. The test is $L\uparrow$, not $L-C\,D^{\max}$: no guarantee.}
+  \note{\footnotesize TRPO, App.~C and C.1. Conjugate gradient solves $As=g$ with $k$ matrix--vector products and never forms $A$. Fisher-vector product: if the network outputs distribution parameters $\mu_\theta(x)$, then $A=J^\top MJ$ with $J=\partial\mu/\partial\theta$ and $M$ the Fisher matrix of the distribution w.r.t.\ $\mu$ (analytic); $Jy$ and $J^\top v$ are a forward-mode and a backprop pass (the second-derivative term of $\mu$ vanishes at $\theta=\told$). Alternative: generic Hessian-vector products of $\bar D_{\mathrm{KL}}$ --- slightly slower, easier to implement. FVPs on $\sim$10\% of the data, so the total cost is about one gradient. Step size: $s^\top As$ comes for free from CG. Line search objective: $L_{\told}(\theta)-\mathcal X[\bar D_{\mathrm{KL}}\le\delta]$, $\mathcal X=0$ if true, $+\infty$ otherwise; exponential shrinking. Guarantee (ours): the search always ends ($L$ rises to first order in $\beta$, the KL only to second order), but passing ``$L$ improves and $\bar D_{\mathrm{KL}}\le\delta$'' does not certify $\eta$ improves --- backtracking stops at the \emph{first} $\beta$ that passes, not one small enough for the first-order argument; e.g.\ $L$ up by $10^{-3}$ with KL $=\delta=0.01$ and $C\approx4\cdot10^4\epsilon$ leaves the bound negative. Testing $M=L-C\,D^{\max}_{\mathrm{KL}}$ instead would certify it (step~1), at the price of tiny steps. Paper: without the line search the algorithm occasionally takes large steps that cause catastrophic drops. Figure (ours, illustrative): the ellipse is $\frac12\Delta^\top A\Delta=\delta$; the dashed region is where the real mean KL is below $\delta$ --- the full step and $\beta/2$ fail, $\beta/4$ is accepted.}
 \end{frame}
 
 % ---------------- TRPO algorithm ----------------
@@ -2106,6 +2110,38 @@
   \vspace{4pt}
   {\small Cost per update: only slightly more than computing the gradient itself.}
   \note{\footnotesize TRPO, Sec.~6.}
+\end{frame}
+
+% ---------------- TRPO and prior methods (TRPO Sec. 7) ----------------
+\begin{frame}[label=trpo-prior]{TRPO vs.\ Policy Gradient Methods}
+  \centering\small\vspace*{4pt}
+  All three: maximize the \textbf{linear} model $g^\top(\theta-\told)$ under a \textbf{limit on the step}.\par\vspace{8pt}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \begin{warmbox}[equal height group=trpo_prior]
+        \small\textbf{\color{AtlasWarm}Vanilla PG vs.\ TRPO}\par\vspace{2pt}
+        Different \textbf{distance}:
+        \begin{gather*}
+          \text{PG: } \tfrac12\|\theta-\told\|^2\le\delta \;\Rightarrow\; \text{direction } g\\
+          \text{TRPO: } \bar D_{\mathrm{KL}}\le\delta \;\Rightarrow\; \text{direction } A^{-1}g
+        \end{gather*}
+        $\|\cdot\|$ depends on the parameterization; the KL measures the change of the \textbf{policy}.
+      \end{warmbox}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \uncover<2->{%
+      \begin{coolbox}[equal height group=trpo_prior]
+        \small\textbf{\color{AtlasCool}Natural PG vs.\ TRPO}\par\vspace{2pt}
+        Same direction $A^{-1}g$. Only the \textbf{length} differs:
+        \begin{gather*}
+          \text{NPG: } \tfrac1\lambda\,A^{-1}g \quad (\tfrac1\lambda \text{ fixed})\\
+          \text{TRPO: } \beta\,A^{-1}g \quad (\beta \text{ from } \delta \text{ + line search})
+        \end{gather*}
+        ``might seem subtle'' --- but it \textbf{significantly} helps on larger problems.
+      \end{coolbox}}
+    \end{column}
+  \end{columns}
+  \note{\footnotesize TRPO, Sec.~7 (Eqs.~17--18). Vanilla PG: the same linear objective with an $\ell_2$ constraint or penalty, so the step is along $g$; the Euclidean distance between parameter vectors says little about how much the policy changes and depends on how $\pi$ is parameterized. NPG (Kakade, 2002): linear model of $L$, quadratic model of $\bar D_{\mathrm{KL}}$, update $\theta_{\text{new}}=\told+\frac1\lambda A(\told)^{-1}\nabla_\theta L$, with $\frac1\lambda$ ``typically treated as an algorithm parameter''. TRPO rescales every step so the quadratic KL model equals $\delta$ ($\beta=\sqrt{2\delta/s^\top As}$) and then line-searches. Paper: ``This differs from our approach, which enforces the constraint at each update. Though this difference might seem subtle, our experiments demonstrate that it significantly improves the algorithm's performance on larger problems'' (Sec.~8: NPG with the best swept step size vs.\ single path). Also in Sec.~7: policy iteration is the unconstrained $\max_\pi L_{\piold}(\pi)$; REPS (Peters et al., 2010) constrains $p(s,a)$ and needs a costly inner optimization; Levine \& Abbeel (2014) use a KL to stay where a learned dynamics model is valid. Contribution in one line (ours): the update is close to prior work (the paper cites Bagnell \& Schneider 2003, Peters \& Schaal 2008, Peters et al.\ 2010); new are the theory behind it (Thm.~1), the step fixed in KL rather than in $\lambda$, and CG with Fisher-vector products that scales it to neural networks.}
 \end{frame}
 
 % ---------------- Recap: chain of approximations ----------------
@@ -2128,9 +2164,9 @@
   \vspace{4pt}
   \begin{itemize}
     \item First three boxes: \textbf{theory} (monotone improvement). From the trust region on: \textbf{practice} --- each arrow trades a guarantee for practicality.
-    \item What's left: noisy $\hat Q$ (GAE) and a heavy second-order solver (PPO). \hfill \hyperlink{trpo-connections}{\beamergotobutton{Related algorithms}}
+    \item What's left: noisy $\hat Q$ (GAE) and a heavy second-order solver (PPO).
   \end{itemize}
-  \note{\footnotesize Theory ignores advantage-estimation error (Kakade \& Langford handle it; TRPO omits it for simplicity). The backup slide places vanilla PG, natural PG and policy iteration in the same table (TRPO Sec.~7).}
+  \note{\footnotesize Theory ignores advantage-estimation error (Kakade \& Langford handle it; TRPO omits it for simplicity).}
 \end{frame}
 
 % % ---------------- What TRPO does not fix: state coverage ----------------
@@ -2239,7 +2275,6 @@
         {Introduces \textbf{GAE$(\gamma,\lambda)$}: TD($\lambda$) for advantages}
     \end{column}
     \begin{column}{0.55\textwidth}
-      \only<1>{%
       {\large\bfseries\color{AtlasAccent}Key Contributions\par}
       \vspace{6pt}
       \small
@@ -2250,20 +2285,143 @@
         \item \textbf{GAE$(\gamma,\lambda)$:} exponentially weighted average of $n$-step TD advantages,
           $\hat A_t=\sum_l(\gamma\lambda)^l\delta_{t+l}$, with the \textbf{TD residual}
           {\color{AtlasWarm}$\delta_t = r_t+\gamma V(s_{t+1})-V(s_t)$} (itself a one-step advantage estimate).
-      \end{itemize}}%
-      \only<2>{%
-      % One iteration i of the GAE paper's algorithm (Sec. 6.1): same batch, actor first, critic second.
-      {\large\bfseries\color{AtlasAccent}One Iteration: Actor, then Critic\par}
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \note{\footnotesize GAE, Sec.~1--2 and 6. The discounted problem is a special case (absorb $\gamma^t$ into a time-dependent reward). All quantities are unnormalized here, like TRPO and unlike CPI. The formula itself was proposed earlier (Kimura \& Kobayashi 1998; Wawrzy\'nski 2009); the paper's contribution is the analysis that makes it usable with batch trust-region methods, plus the trust-region value-function fit. GAE was used with TRPO here; PPO later adopts (truncated) GAE as its advantage estimator.}
+\end{frame}
+
+
+% ---------------- GAE: k-step advantages -> exponential average ----------------
+\begin{frame}{GAE: TD($\lambda$) for Advantages}
+  \begin{columns}[T]
+    \begin{column}{0.53\textwidth}
+      \centering\vspace*{2pt}
+      \small
+      \eqstep{1}{\text{TD residual: one reward, then $V$}\\
+        \delta_t^V = r_t + \gamma V(s_{t+1}) - V(s_t)}
+      \eqsep{2}
+      \eqstep{2}{\text{$k$ residuals: $\hat A_t^{(k)}=\textstyle\sum_{l<k}\gamma^l\delta_{t+l}^V$ telescopes to}\\
+        \hat A_t^{(k)} = -V(s_t) + \textstyle\sum_{l=0}^{k-1}\gamma^l r_{t+l} + \gamma^k V(s_{t+k})}
+      \eqsep{3}
+      \eqstep{3}{\text{all of them: return minus a baseline}\\
+        \hat A_t^{(\infty)} = \textstyle\sum_{l\ge0}\gamma^l r_{t+l} - V(s_t)}
+      \eqsep{4}
+      \eqstep{4}{\text{GAE: average all $k$ with weights $(1-\lambda)\lambda^{k-1}$}\\
+        \hat A_t^{\mathrm{GAE}(\gamma,\lambda)} = \textstyle\sum_{l\ge0}(\gamma\lambda)^l\,\delta_{t+l}^V}
+    \end{column}
+    \begin{column}{0.02\textwidth}
+      {\color{AtlasSlate!40}\vrule width 0.6pt height 0.66\textheight}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \centering
+      \begin{tikzpicture}[x=0.76cm, y=0.95cm, >=Stealth,
+          st/.style={circle, fill=AtlasSlate, minimum size=0.16cm, inner sep=0pt},
+          real/.style={AtlasWarm, line width=2.4pt, line cap=round},
+          boot/.style={circle, draw=AtlasWarm, very thick, fill=white, minimum size=0.32cm, inner sep=0pt},
+          base/.style={rectangle, draw=AtlasSlate, thick, fill=AtlasSlate!25, minimum size=0.22cm, inner sep=0pt},
+          lab/.style={font=\scriptsize, anchor=east}]
+        \foreach \i/\n in {0/t, 1/t{+}1, 2/t{+}2, 3/t{+}3, 4/t{+}4}
+          \node[st] (s\i) at (\i,0) {};
+        \foreach \i/\n in {0/t, 1/t{+}1, 2/t{+}2, 3/t{+}3, 4/t{+}4}
+          \node[font=\tiny, above=2pt of s\i] {$s_{\n}$};
+        \foreach \i/\j/\r in {0/1/t, 1/2/t{+}1, 2/3/t{+}2, 3/4/t{+}3}
+          \draw[->, AtlasSlate, shorten <=2pt, shorten >=2pt] (s\i) -- node[below=1pt, font=\tiny]{$r_{\r}$} (s\j);
+        \draw[->, AtlasSlate, shorten <=2pt] (s4) -- (5.0,0) node[right, font=\scriptsize]{$\cdots$};
+        % k = 1
+        \uncover<1->{
+          \node[lab] at (-0.3,-1.0) {$k=1$};
+          \draw[real] (0,-1.0) -- (1,-1.0);
+          \node[base] at (0,-1.0) {};
+          \node[boot] at (1,-1.0) {};}
+        % k = 3
+        \uncover<2->{
+          \node[lab] at (-0.3,-1.7) {$k=3$};
+          \draw[real] (0,-1.7) -- (3,-1.7);
+          \node[base] at (0,-1.7) {};
+          \node[boot] at (3,-1.7) {};}
+        % k = infinity
+        \uncover<3->{
+          \node[lab] at (-0.3,-2.4) {$k=\infty$};
+          \draw[real] (0,-2.4) -- (5.3,-2.4);
+          \node[base] at (0,-2.4) {};
+          \draw[AtlasWarm, thick] (5.3,-2.55) -- (5.3,-2.25);}
+        % legend
+        \node[font=\tiny, anchor=west] at (-1.1,-3.05)
+          {\tikz\node[base]{}; $-V(s_t)$ \;\;
+           \tikz\draw[real] (0,0) -- (0.35,0); rewards \;\;
+           \tikz\node[boot] {}; $\gamma^kV(s_{t+k})$};
+        % spectrum
+        \uncover<4->{
+          \draw[<->, thick, AtlasSlate] (0,-3.75) -- (5.3,-3.75);
+          \node[font=\scriptsize, below] at (0,-3.8) {$\lambda=0$};
+          \node[font=\scriptsize, below] at (5.3,-3.8) {$\lambda=1$};
+          \node[font=\tiny, align=center, below] at (1.0,-4.25) {low variance\\biased unless $V=V^{\pi,\gamma}$};
+          \node[font=\tiny, align=center, below] at (4.3,-4.25) {unbiased for $g^\gamma$, any $V$\\high variance};}
+      \end{tikzpicture}
+    \end{column}
+  \end{columns}
+  \note{\footnotesize GAE, Sec.~3, Eqs.~10--18. Same picture as our TD(0)$\to$MC slide in Part~I: TD($\lambda$) estimates a value, GAE estimates an advantage; the only change is the baseline $-V(s_t)$ at the start of every row. $\delta^V_t$ is an unbiased advantage estimate only if $V = V^{\pi,\gamma}$. The bias shrinks as $k$ grows because the bootstrapped term $\gamma^kV(s_{t+k})$ is discounted more, while $-V(s_t)$ never adds bias (it is a baseline). The geometric weights $(1-\lambda)\lambda^{k-1}$ sum to~1, and the sum collapses to a $(\gamma\lambda)$-discounted sum of TD residuals (Eq.~16). Unnormalized, like TRPO.}
+\end{frame}
+
+% ---------------- Two knobs: gamma and lambda ----------------
+\begin{frame}{Two Knobs, Two Kinds of Bias}
+  \begin{columns}[c]
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[x=0.9cm, y=1.6cm, >=Stealth,
+          declare function={raw(\x) = 0.25 + 0.55*exp(-0.18*\x) + 0.12*sin(deg(1.3*\x))*exp(-0.08*\x);
+                             shaped(\x) = 1.1*exp(-1.3*\x);}]
+        \draw[->, gray] (0,0) -- (6.3,0) node[right, font=\scriptsize]{$l$};
+        \draw[->, gray] (0,0) -- (0,1.35) node[left, font=\scriptsize]{$|\chi|$};
+        % windows first, curves on top
+        \fill[AtlasSlate!10] (0,0) rectangle (4.6,1.2);
+        \uncover<2->{\fill[AtlasWarm!18] (0,0) rectangle (1.8,1.2);}
+        \draw[dashed, AtlasSlate] (4.6,0) node[below, font=\scriptsize]{$\frac{1}{1-\gamma}$} -- (4.6,1.2);
+        \draw[AtlasSlate, very thick, domain=0:6.1, samples=80, smooth] plot (\x, {raw(\x)});
+        \node[AtlasSlate, font=\scriptsize] at (5.45,0.85) {raw reward};
+        \uncover<2->{
+          \draw[dashed, AtlasWarm] (1.8,0) node[below, font=\scriptsize]{$\frac{1}{1-\gamma\lambda}$} -- (1.8,1.2);
+          \draw[AtlasWarm, very thick, domain=0:6.1, samples=60, smooth] plot (\x, {shaped(\x)});
+          \node[AtlasWarm, font=\scriptsize, anchor=west] at (1.9,1.05) {shaped by $V$: $\delta^V$};}
+      \end{tikzpicture}\par\vspace{4pt}
+      {\scriptsize\color{NoteGray}$\chi(l;s,a)=\E[r_{t+l}\mid s,a]-\E[r_{t+l}\mid s]$: how long $a_t$ keeps mattering}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \small
+      \textbf{\color{AtlasSlate}$\gamma$: cut the horizon}\\
+      Drops effects after $\approx\frac{1}{1-\gamma}$ steps. \\
+      Biased \textbf{even with the exact} $V$.
+
       \vspace{8pt}
+      \uncover<2->{
+        \textbf{\color{AtlasWarm}$\lambda$: shape, then cut again}\\
+        $\delta^V$ is the reward shaped by $\Phi = V$: a good $V$ pulls the effect of $a_t$ to $l\approx0$. \\
+        Biased \textbf{only if $V$ is wrong}.}
+
+      \vspace{8pt}
+      \uncover<3->{
+      \begin{slatebox}[top=3pt, bottom=3pt]
+        \small So the best $\lambda$ is \textbf{lower} than the best $\gamma$ (in practice $\lambda\in[0.9,0.99]$).
+      \end{slatebox}}
+    \end{column}
+  \end{columns}
+  \note{\footnotesize GAE, Sec.~3 (end) and Sec.~4. $\gamma$ sets the scale of $V^{\pi,\gamma}$ and adds bias regardless of the value function's accuracy; $\lambda<1$ adds bias only when $V$ is inaccurate --- hence the best $\lambda$ is much lower than the best $\gamma$. Reward shaping (Ng et al., 1999): $\tilde r = r + \gamma\Phi(s') - \Phi(s)$ leaves $A^{\pi,\gamma}$ unchanged; with $\Phi = V$ it is exactly $\delta^V$, and GAE is the $(\gamma\lambda)$-discounted sum of shaped rewards (Eq.~20). With $\Phi = V^{\pi,\gamma}$ the response of the shaped reward is nonzero only at $l=0$. Response function: Eq.~22, $A^{\pi,\gamma}(s,a)=\sum_l\gamma^l\chi(l;s,a)$. Curves are illustrative. Numbers: Sec.~6.3 (cart-pole: $\gamma\in[0.96,0.99]$, $\lambda\in[0.92,0.99]$); Discussion: $\lambda\in[0.9,0.99]$ ``usually'' best; App.~A.2: the $\lambda=0$ estimator was ``prohibitively'' biased.}
+\end{frame}
+
+% ---------------- GAE + TRPO: one iteration, actor then critic ----------------
+\begin{frame}{One Iteration: Actor, then Critic}
+  \begin{columns}[T]
+    \begin{column}{0.53\textwidth}
       \centering
       \begin{tikzpicture}[font=\scriptsize, >=Stealth,
-          st/.style={rectangle, rounded corners=3pt, line width=0.8pt, text width=2.55cm,
+          st/.style={rectangle, rounded corners=3pt, line width=0.8pt, text width=2.4cm,
             align=center, minimum height=1.15cm, inner sep=3pt}]
         \node[st, cbox=AtlasSlate] (roll) at (0,0)
           {\textbf{1. Rollout}\\ run $\pi_{\theta_i}$ for $N$ steps};
-        \node[st, cbox=AtlasWarm] (adv) at (3.4,0)
+        \node[st, cbox=AtlasWarm] (adv) at (3.55,0)
           {\textbf{\color{AtlasWarm}2. Advantages}\\ $\delta_t$ with the old $V_{\phi_i}$\\ $\hat A_t=\sum_l(\gamma\lambda)^l\delta_{t+l}$};
-        \node[st, cbox=AtlasCool] (act) at (3.4,-2.0)
+        \node[st, cbox=AtlasCool] (act) at (3.55,-2.0)
           {\textbf{\color{AtlasCool}3. Actor}\\ TRPO step with $\hat A_t$\\ $\theta_i\to\theta_{i+1}$};
         \node[st, cbox=AtlasWarm, fill=AtlasWarm!18!white] (crit) at (0,-2.0)
           {\textbf{\color{AtlasWarm}4. Critic}\\ fit $V_\phi$ to returns\\ (trust region) $\phi_i\to\phi_{i+1}$};
@@ -2273,11 +2431,29 @@
         \draw[->, thick, AtlasSlate] (crit) -- node[left, font=\tiny]{$i\leftarrow i+1$} (roll);
       \end{tikzpicture}\par\vspace{8pt}
       \raggedright\footnotesize
-      \textbf{Order matters:} $\hat A_t$ uses the \emph{old} critic. Fitting $V$ first can overfit the batch $\Rightarrow$ every $\delta_t\approx0$ $\Rightarrow$ zero gradient.}
+      \uncover<3->{\textbf{Order matters:} $\hat A_t$ uses the \emph{old} critic. Fitting $V$ first can overfit the batch $\Rightarrow$ every $\delta_t\approx0$ $\Rightarrow$ zero gradient.}
+    \end{column}
+    \begin{column}{0.44\textwidth}
+      \small
+      \begin{itemize}
+        \item \textbf{\color{AtlasCool}Actor}: the policy network $\pi_\theta$, updated by TRPO.
+        \item \textbf{\color{AtlasWarm}Critic}: a second network $V_\phi(s)\approx V^{\pi,\gamma}(s)$, fitted by regression to the returns $\hat V_n=\sum_l\gamma^l r_{n+l}$.
+      \end{itemize}
+      \uncover<2->{%
+      {\color{AtlasWarm}\textbf{Value fit with a trust region}}
+      \begin{warmformulabox}
+        \begin{gather*}
+          \min_\phi\ \sum_n \big\|V_\phi(s_n) - \hat V_n\big\|^2 \\
+          \text{s.t.}\ \ \frac1N\sum_n \frac{\|V_\phi(s_n) - V_{\phi_{\mathrm{old}}}(s_n)\|^2}{2\sigma^2} \le \epsilon
+        \end{gather*}
+      \end{warmformulabox}
+      {\footnotesize $=$ a KL trust region for a Gaussian with mean $V_\phi(s)$; solved with CG, like TRPO.}}
     \end{column}
   \end{columns}
-  \note{\footnotesize Flow: GAE, Sec.~6.1 (algorithm box) and the remark after it: ``the policy update $\theta_i\to\theta_{i+1}$ is performed using the value function $V_{\phi_i}$ for advantage estimation, not $V_{\phi_{i+1}}$. Additional bias would have been introduced if we updated the value function first'' --- in the extreme, an overfit $V$ makes the Bellman residual zero at all timesteps and the gradient estimate zero. The critic step (Sec.~5, Eqs.~28--30) is not TRPO: it is a trust-region regression to Monte Carlo returns, $\min_\phi\sum_n\|V_\phi(s_n)-\hat V_n\|^2$ s.t.\ $\frac1N\sum_n\|V_\phi(s_n)-V_{\phi_{\mathrm{old}}}(s_n)\|^2/(2\sigma^2)\le\epsilon$, i.e.\ a KL trust region for a Gaussian with mean $V_\phi(s)$; solved with CG like TRPO. GAE was used with TRPO here; PPO later adopts (truncated) GAE as its advantage estimator. GAE, Sec.~1--2 and 6. The discounted problem is a special case (absorb $\gamma^t$ into a time-dependent reward). All quantities are unnormalized here, like TRPO and unlike CPI. The formula itself was proposed earlier (Kimura \& Kobayashi 1998; Wawrzy\'nski 2009); the paper's contribution is the analysis that makes it usable with batch trust-region methods, plus the trust-region value-function fit.}
+  \note{\footnotesize GAE, Sec.~5 (Eqs.~28--30) and Sec.~6.1 (algorithm box) and the remark after it: ``the policy update $\theta_i\to\theta_{i+1}$ is performed using the value function $V_{\phi_i}$ for advantage estimation, not $V_{\phi_{i+1}}$. Additional bias would have been introduced if we updated the value function first'' --- in the extreme, an overfit $V$ makes the Bellman residual zero at all timesteps and the gradient estimate zero. Actor-critic: the ``actor'' is the policy, the ``critic'' is the learned value function that scores its actions (Konda \& Tsitsiklis 2003, cited in GAE Sec.~1). Unlike Q-learning-style critics (e.g.\ SAC, which learns $Q(s,a)$ off-policy), GAE's critic is a state-value $V(s)$ fitted on-policy to Monte Carlo returns (TD($\lambda$) targets gave no difference). The critic step is not TRPO: it is a trust-region regression; $\sigma^2$ is the current mean squared error. The trust region addresses the second challenge of the abstract (stable improvement despite nonstationary data). Networks: three hidden layers (100, 50, 25 tanh units) for both policy and value.}
 \end{frame}
+
+
 
 
 % % ---------------- GAE paper: title + setting ----------------
@@ -2410,123 +2586,6 @@
 %   \note{\footnotesize GAE, Sec.~2, Eq.~1--6. ``The choice $\Psi_t = A^\pi(s_t,a_t)$ yields almost the lowest possible variance'' (Greensmith et al., 2004 for the rigorous version). Intuition from the paper: the gradient term points toward increasing $\pi_\theta(a_t\mid s_t)$ if and only if $A^\pi(s_t,a_t)>0$. Same figure as the Notation slide (step~3): advantages are the gaps to the $V$ line. Step 3: the discounted policy gradient $g^\gamma$ uses $A^{\pi,\gamma}$; an estimator $\hat A_t$ is ``$\gamma$-just'' if it gives an unbiased estimate of $g^\gamma$ (Def.~1, Prop.~1: any unbiased $Q$-estimate minus a baseline that depends only on the past). The paper then only cares about bias \emph{relative to} $g^\gamma$.}
 % \end{frame}
 
-% % ---------------- GAE: k-step advantages -> exponential average ----------------
-% \begin{frame}{GAE: TD($\lambda$) for Advantages}
-%   \begin{columns}[T]
-%     \begin{column}{0.53\textwidth}
-%       \centering\vspace*{2pt}
-%       \small
-%       \eqstep{1}{\text{TD residual: one reward, then $V$}\\
-%         \delta_t^V = r_t + \gamma V(s_{t+1}) - V(s_t)}
-%       \eqsep{2}
-%       \eqstep{2}{\text{$k$ residuals: $\hat A_t^{(k)}=\textstyle\sum_{l<k}\gamma^l\delta_{t+l}^V$ telescopes to}\\
-%         \hat A_t^{(k)} = -V(s_t) + \textstyle\sum_{l=0}^{k-1}\gamma^l r_{t+l} + \gamma^k V(s_{t+k})}
-%       \eqsep{3}
-%       \eqstep{3}{\text{all of them: return minus a baseline}\\
-%         \hat A_t^{(\infty)} = \textstyle\sum_{l\ge0}\gamma^l r_{t+l} - V(s_t)}
-%       \eqsep{4}
-%       \eqstep{4}{\text{GAE: average all $k$ with weights $(1-\lambda)\lambda^{k-1}$}\\
-%         \hat A_t^{\mathrm{GAE}(\gamma,\lambda)} = \textstyle\sum_{l\ge0}(\gamma\lambda)^l\,\delta_{t+l}^V}
-%     \end{column}
-%     \begin{column}{0.02\textwidth}
-%       {\color{AtlasSlate!40}\vrule width 0.6pt height 0.66\textheight}
-%     \end{column}
-%     \begin{column}{0.43\textwidth}
-%       \centering
-%       \begin{tikzpicture}[x=0.76cm, y=0.95cm, >=Stealth,
-%           st/.style={circle, fill=AtlasSlate, minimum size=0.16cm, inner sep=0pt},
-%           real/.style={AtlasWarm, line width=2.4pt, line cap=round},
-%           boot/.style={circle, draw=AtlasWarm, very thick, fill=white, minimum size=0.32cm, inner sep=0pt},
-%           base/.style={rectangle, draw=AtlasSlate, thick, fill=AtlasSlate!25, minimum size=0.22cm, inner sep=0pt},
-%           lab/.style={font=\scriptsize, anchor=east}]
-%         \foreach \i/\n in {0/t, 1/t{+}1, 2/t{+}2, 3/t{+}3, 4/t{+}4}
-%           \node[st] (s\i) at (\i,0) {};
-%         \foreach \i/\n in {0/t, 1/t{+}1, 2/t{+}2, 3/t{+}3, 4/t{+}4}
-%           \node[font=\tiny, above=2pt of s\i] {$s_{\n}$};
-%         \foreach \i/\j/\r in {0/1/t, 1/2/t{+}1, 2/3/t{+}2, 3/4/t{+}3}
-%           \draw[->, AtlasSlate, shorten <=2pt, shorten >=2pt] (s\i) -- node[below=1pt, font=\tiny]{$r_{\r}$} (s\j);
-%         \draw[->, AtlasSlate, shorten <=2pt] (s4) -- (5.0,0) node[right, font=\scriptsize]{$\cdots$};
-%         % k = 1
-%         \uncover<1->{
-%           \node[lab] at (-0.3,-1.0) {$k=1$};
-%           \draw[real] (0,-1.0) -- (1,-1.0);
-%           \node[base] at (0,-1.0) {};
-%           \node[boot] at (1,-1.0) {};}
-%         % k = 3
-%         \uncover<2->{
-%           \node[lab] at (-0.3,-1.7) {$k=3$};
-%           \draw[real] (0,-1.7) -- (3,-1.7);
-%           \node[base] at (0,-1.7) {};
-%           \node[boot] at (3,-1.7) {};}
-%         % k = infinity
-%         \uncover<3->{
-%           \node[lab] at (-0.3,-2.4) {$k=\infty$};
-%           \draw[real] (0,-2.4) -- (5.3,-2.4);
-%           \node[base] at (0,-2.4) {};
-%           \draw[AtlasWarm, thick] (5.3,-2.55) -- (5.3,-2.25);}
-%         % legend
-%         \node[font=\tiny, anchor=west] at (-1.1,-3.05)
-%           {\tikz\node[base]{}; $-V(s_t)$ \;\;
-%            \tikz\draw[real] (0,0) -- (0.35,0); rewards \;\;
-%            \tikz\node[boot] {}; $\gamma^kV(s_{t+k})$};
-%         % spectrum
-%         \uncover<4->{
-%           \draw[<->, thick, AtlasSlate] (0,-3.75) -- (5.3,-3.75);
-%           \node[font=\scriptsize, below] at (0,-3.8) {$\lambda=0$};
-%           \node[font=\scriptsize, below] at (5.3,-3.8) {$\lambda=1$};
-%           \node[font=\tiny, align=center, below] at (1.0,-4.25) {low variance\\biased unless $V=V^{\pi,\gamma}$};
-%           \node[font=\tiny, align=center, below] at (4.3,-4.25) {unbiased for $g^\gamma$, any $V$\\high variance};}
-%       \end{tikzpicture}
-%     \end{column}
-%   \end{columns}
-%   \note{\footnotesize GAE, Sec.~3, Eqs.~10--18. Same picture as our TD(0)$\to$MC slide in Part~I: TD($\lambda$) estimates a value, GAE estimates an advantage; the only change is the baseline $-V(s_t)$ at the start of every row. $\delta^V_t$ is an unbiased advantage estimate only if $V = V^{\pi,\gamma}$. The bias shrinks as $k$ grows because the bootstrapped term $\gamma^kV(s_{t+k})$ is discounted more, while $-V(s_t)$ never adds bias (it is a baseline). The geometric weights $(1-\lambda)\lambda^{k-1}$ sum to~1, and the sum collapses to a $(\gamma\lambda)$-discounted sum of TD residuals (Eq.~16). Unnormalized, like TRPO.}
-% \end{frame}
-
-% % ---------------- Two knobs: gamma and lambda ----------------
-% \begin{frame}{Two Knobs, Two Kinds of Bias}
-%   \begin{columns}[c]
-%     \begin{column}{0.5\textwidth}
-%       \centering
-%       \begin{tikzpicture}[x=0.9cm, y=1.6cm, >=Stealth,
-%           declare function={raw(\x) = 0.25 + 0.55*exp(-0.18*\x) + 0.12*sin(deg(1.3*\x))*exp(-0.08*\x);
-%                              shaped(\x) = 1.1*exp(-1.3*\x);}]
-%         \draw[->, gray] (0,0) -- (6.3,0) node[right, font=\scriptsize]{$l$};
-%         \draw[->, gray] (0,0) -- (0,1.35) node[left, font=\scriptsize]{$|\chi|$};
-%         % windows first, curves on top
-%         \fill[AtlasSlate!10] (0,0) rectangle (4.6,1.2);
-%         \uncover<2->{\fill[AtlasWarm!18] (0,0) rectangle (1.8,1.2);}
-%         \draw[dashed, AtlasSlate] (4.6,0) node[below, font=\scriptsize]{$\frac{1}{1-\gamma}$} -- (4.6,1.2);
-%         \draw[AtlasSlate, very thick, domain=0:6.1, samples=80, smooth] plot (\x, {raw(\x)});
-%         \node[AtlasSlate, font=\scriptsize] at (5.45,0.85) {raw reward};
-%         \uncover<2->{
-%           \draw[dashed, AtlasWarm] (1.8,0) node[below, font=\scriptsize]{$\frac{1}{1-\gamma\lambda}$} -- (1.8,1.2);
-%           \draw[AtlasWarm, very thick, domain=0:6.1, samples=60, smooth] plot (\x, {shaped(\x)});
-%           \node[AtlasWarm, font=\scriptsize, anchor=west] at (1.9,1.05) {shaped by $V$: $\delta^V$};}
-%       \end{tikzpicture}\par\vspace{4pt}
-%       {\scriptsize\color{NoteGray}$\chi(l;s,a)=\E[r_{t+l}\mid s,a]-\E[r_{t+l}\mid s]$: how long $a_t$ keeps mattering}
-%     \end{column}
-%     \begin{column}{0.48\textwidth}
-%       \small
-%       \textbf{\color{AtlasSlate}$\gamma$: cut the horizon}\\
-%       Drops effects after $\approx\frac{1}{1-\gamma}$ steps. \\
-%       Biased \textbf{even with the exact} $V$.
-
-%       \vspace{8pt}
-%       \uncover<2->{
-%         \textbf{\color{AtlasWarm}$\lambda$: shape, then cut again}\\
-%         $\delta^V$ is the reward shaped by $\Phi = V$: a good $V$ pulls the effect of $a_t$ to $l\approx0$. \\
-%         Biased \textbf{only if $V$ is wrong}.}
-
-%       \vspace{8pt}
-%       \uncover<3->{
-%       \begin{slatebox}[top=3pt, bottom=3pt]
-%         \small So the best $\lambda$ is \textbf{lower} than the best $\gamma$ (numbers at the end).
-%       \end{slatebox}}
-%     \end{column}
-%   \end{columns}
-%   \note{\footnotesize GAE, Sec.~3 (end) and Sec.~4. $\gamma$ sets the scale of $V^{\pi,\gamma}$ and adds bias regardless of the value function's accuracy; $\lambda<1$ adds bias only when $V$ is inaccurate --- hence the best $\lambda$ is much lower than the best $\gamma$. Reward shaping (Ng et al., 1999): $\tilde r = r + \gamma\Phi(s') - \Phi(s)$ leaves $A^{\pi,\gamma}$ unchanged; with $\Phi = V$ it is exactly $\delta^V$, and GAE is the $(\gamma\lambda)$-discounted sum of shaped rewards (Eq.~20). With $\Phi = V^{\pi,\gamma}$ the response of the shaped reward is nonzero only at $l=0$. Response function: Eq.~22, $A^{\pi,\gamma}(s,a)=\sum_l\gamma^l\chi(l;s,a)$. Curves are illustrative. Numbers: Sec.~6.3 (cart-pole: $\gamma\in[0.96,0.99]$, $\lambda\in[0.92,0.99]$); Discussion: $\lambda\in[0.9,0.99]$ ``usually'' best; App.~A.2: the $\lambda=0$ estimator was ``prohibitively'' biased.}
-% \end{frame}
-
 % % ---------------- GAE + TRPO: actor and critic ----------------
 % \begin{frame}{Actor--Critic: Policy and Value Networks}
 %   \begin{columns}[T]
@@ -2593,8 +2652,9 @@
         \item Same setting as TRPO; advantages $\hat A_t$ from (truncated) \textbf{GAE}.
         \item \textbf{TRPO}: complicated; no dropout, no parameter sharing between policy and value.
         \item \textbf{Vanilla PG}: several steps on the same batch $\Rightarrow$ destructively large updates.
-        \item \textbf{Goal}: reuse each batch for many SGD steps, without leaving the trust region.
-        \item Tested on MuJoCo and 49 Atari games.
+        \item \textbf{Goal}: reuse each batch for many SGD steps, without leaving the trust region.        
+        \item Tested on MuJoCo and 49 Atari games - we will skip the details.
+        \item Two variants: \textbf{clipped surrogate} and \textbf{KL penalty}. We will focus on the first.
       \end{itemize}
     \end{column}
   \end{columns}
@@ -2796,7 +2856,7 @@
       \begin{slatebox}
         \small\textbf{Each iteration:}
         \begin{enumerate}
-          \item $N$ actors run $\pi_{\told}$ for $T$ steps each.
+          \item $N$ actors run (in parallel) $\pi_{\told}$ for $T$ steps each.
           \item Truncated GAE: $\hat A_t = \sum_{l=0}^{T-t-1}(\gamma\lambda)^l\delta_{t+l}$.
           \item $K$ epochs of minibatch Adam on $L$.
           \item $\told\leftarrow\theta$.
@@ -2805,14 +2865,69 @@
     \end{column}
     \begin{column}{0.42\textwidth}
       \begin{coolbox}
-        \small\textbf{\color{AtlasCool}The point:} $K$ epochs on the \textbf{same} batch.\\[2pt]
-        TRPO took \textbf{one} step per batch; clipping is what makes reuse safe.
+        \small\textbf{\color{AtlasCool}Step 3} reuses the \textbf{same} batch $K$ times. Why is that safe? Next slide.
       \end{coolbox}
       \vspace{4pt}
       {\scriptsize $\delta_t = r_t+\gamma V(s_{t+1})-V(s_t)$: TD residual, as in GAE.\par}
+      \vspace{2pt}
+      {\scriptsize Segments cut one \textbf{continuing} stream of episodes: an episode cut at $T$ resumes next iteration, and $V(s_T)$ fills in the rest.\par}
     \end{column}
   \end{columns}
-  \note{\footnotesize PPO, Sec.~5 (Eqs.~9--12, Alg.~1) and Table~3. MuJoCo settings (Table~3): $T=2048$, $K=10$ epochs, minibatch 64, $\gamma=0.99$, $\lambda=0.95$, $\epsilon=0.2$. Abstract: ``we propose a novel objective function that enables multiple epochs of minibatch updates''. $c_1$ only matters when policy and value share parameters; the entropy bonus $S$ encourages exploration (Williams 1992; Mnih et al.\ 2016). Truncated GAE does not look beyond the segment end $T$, which suits fixed-length segments and recurrent nets. Atari settings (Table~5): $T=128$, 3 epochs, 8 actors, $\epsilon=0.1\alpha$ with $\alpha$ annealed $1\to0$, $c_1=1$, $c_2=0.01$. The entropy bonus is PPO's only explicit exploration term (``to ensure sufficient exploration'', Sec.~5) --- it acts on the action distribution, not on where episodes start. Results: Experiments section at the end.}
+  \note{\footnotesize PPO, Sec.~5 (Eqs.~9--12, Alg.~1) and Table~3. MuJoCo settings (Table~3): $T=2048$, $K=10$ epochs, minibatch 64, $\gamma=0.99$, $\lambda=0.95$, $\epsilon=0.2$. Abstract: ``we propose a novel objective function that enables multiple epochs of minibatch updates''. $c_1$ only matters when policy and value share parameters; the entropy bonus $S$ encourages exploration (Williams 1992; Mnih et al.\ 2016). Truncated GAE does not look beyond the segment end $T$, which suits fixed-length segments and recurrent nets. The paper prints the last exponent as $(\gamma\lambda)^{T-t+1}$; it should be $T-t-1$ (last term $\delta_{T-1}$). Stream vs.\ segments (our reading; the paper only says ``$T$ much less than the episode length'', from A3C): the environment is not reset each iteration; an episode cut at $T$ continues next iteration, an episode that ends inside a segment resets and a new one starts. So every episode end lands in exactly one segment; only positions whose own sum is cut bootstrap from $V(s_T)$. OpenAI Baselines' PPO runner does exactly this. Atari settings (Table~5): $T=128$, 3 epochs, 8 actors, $\epsilon=0.1\alpha$ with $\alpha$ annealed $1\to0$, $c_1=1$, $c_2=0.01$. The entropy bonus is PPO's only explicit exploration term (``to ensure sufficient exploration'', Sec.~5) --- it acts on the action distribution, not on where episodes start. Results: Experiments section at the end.}
+\end{frame}
+
+% ---------------- Why clipping makes batch reuse safe ----------------
+\begin{frame}{Why Clipping Makes Batch Reuse Safe}
+  \begin{columns}[T]
+    \begin{column}{0.46\textwidth}
+      \centering
+      \begin{tikzpicture}[x=1.05cm, y=0.5cm, >=Stealth, font=\scriptsize]
+        \fill[GoodGreen!15] (0,0.6) rectangle (4.3,2);
+        \node[font=\tiny, text=GoodGreen!60!black, anchor=west] at (0.1,0.3) {data trustworthy};
+        \draw[->, gray] (0,0) -- (4.4,0) node[right]{epoch};
+        \draw[->, gray] (0,0) -- (0,5.6) node[above]{$r_t=\frac{\pi_\theta(a_t|s_t)}{\piold(a_t|s_t)}$};
+        \foreach \k in {0,...,4} \draw (\k,0) -- (\k,-0.12) node[below, font=\tiny]{\k};
+        \draw (0,1) -- (-0.08,1) node[left, font=\tiny]{$1$};
+        \draw[dotted, gray] (0,2) node[left, font=\tiny, text=black]{$1{+}\epsilon$} -- (4.3,2);
+        % unclipped (CPI): runs away, as on the "PPO's Goal" slide
+        \draw[gray, dashed, thick] (0,1) -- (1,1.5) -- (2,2.4) -- (3,3.3) -- (4,5);
+        \node[font=\tiny, text=gray, anchor=east] at (3.9,5.0) {$L^{CPI}$: keeps rising};
+        % clipped: stops at 1+eps
+        \uncover<2->{%
+          \draw[AtlasCool, very thick] (0,1) -- (1,1.5) -- (1.55,2) -- (4,2);
+          \foreach \k/\r in {0/1, 1/1.5, 2/2, 3/2, 4/2} \fill[AtlasCool] (\k,\r) circle (2pt);
+          \node[font=\tiny, text=AtlasCool, anchor=north] at (3.1,1.85) {$L^{CLIP}$: gradient $=0$};}
+      \end{tikzpicture}\par\vspace{2pt}
+      {\footnotesize One sample, $\hat A_t>0$, same batch for every epoch.}
+    \end{column}
+    \begin{column}{0.52\textwidth}
+      \uncover<3->{%
+      \small
+      \textbf{Step 3 --- the $K$ epochs on one batch:}
+      \begin{enumerate}
+        \item \textbf{Epoch 1:} all $r_t\approx1$, so $L^{CLIP}\approx L^{CPI}$: an ordinary policy-gradient step.
+        \item \textbf{Later epochs:} a sample whose $r_t$ has left $[1-\epsilon,1+\epsilon]$ in the improving direction gives \textbf{zero gradient}, so it stops pushing.
+        \item The samples still inside the band keep training.
+      \end{enumerate}
+      \vspace{2pt}
+      {\footnotesize Each sample switches \textbf{itself} off once it has moved ``enough''. No KL solver needed.\par}}
+    \end{column}
+  \end{columns}
+  \vspace{6pt}
+  \uncover<4->{%
+  \begin{columns}[t]
+    \begin{column}{0.48\textwidth}
+      \begin{slatebox}[equal height group=reuse]
+        \small\textbf{TRPO:} one constrained step, then the batch is \textbf{thrown away}.
+      \end{slatebox}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{coolbox}[equal height group=reuse]
+        \small\textbf{\color{AtlasCool}PPO:} the same batch is used \textbf{$K$ times} (e.g.\ $K=10$), so there are more updates per environment step.
+      \end{coolbox}
+    \end{column}
+  \end{columns}}
+  \note{\footnotesize Our explanation of PPO's abstract (``enables multiple epochs of minibatch updates'') and Sec.~3. Left plot: illustrative, not to scale, the continuation of the right plot on ``PPO's Goal''. Once a clipped term is flat in $\theta$, further epochs leave that sample alone; samples clipped the \emph{wrong} way keep their gradient and are pulled back (``The Clipped Surrogate Objective''). Ablation: without clipping or penalty the same $K$-epoch schedule scores $-0.39$ (Table~1), i.e.\ reuse is only safe \emph{because} of the clip. Caveat (from ``What Clipping Replaces''): clipped samples can still drift through shared parameters; the clip removes the incentive, not every possibility, of moving further. Many implementations add early stopping on the KL.}
 \end{frame}
 
 % ---------------- TRPO vs PPO ----------------
@@ -3089,221 +3204,221 @@
 \end{frame}
 
 
-% ===========================================================================
-%  BONUS: PPO for language models -- GRPO (adapted from the Part 1 deck)
-% ===========================================================================
-\section{Bonus: From PPO to GRPO}
+% % ===========================================================================
+% %  BONUS: PPO for language models -- GRPO (adapted from the Part 1 deck)
+% % ===========================================================================
+% \section{Bonus: From PPO to GRPO}
 
-% ---------------- Setting: text generation as RL ----------------
-\begin{frame}[label=llm-as-rl]{Text Generation as an RL Problem}
-  \centering
-  \begin{tikzpicture}[font=\small, >=Stealth,
-      tok/.style={rectangle, rounded corners=2pt, draw=AtlasCool, thick, fill=AtlasCool!8,
-        minimum width=0.85cm, minimum height=0.6cm, inner sep=1pt}]
-    \node[rectangle, rounded corners=2pt, draw=AtlasSlate, thick, fill=AtlasSlate!10,
-          minimum height=0.6cm, inner sep=4pt] (x) at (0,0) {question $q\sim P(Q)$};
-    \node[tok, right=0.35cm of x] (y1) {$o_1$};
-    \node[tok, right=0.25cm of y1] (y2) {$o_2$};
-    \node[tok, right=0.25cm of y2] (y3) {$o_3$};
-    \node[right=0.2cm of y3] (dots) {$\cdots$};
-    \node[tok, right=0.2cm of dots] (eos) {\texttt{EOS}};
-    \node[star, star points=5, fill=AtlasWarm, minimum size=0.42cm, inner sep=0pt, right=0.35cm of eos] (r) {};
-    \node[right=0.05cm of r, font=\small, AtlasWarm] {$r(q,o)$};
-    \draw[decorate, decoration={brace, amplitude=4pt, mirror}, thick, AtlasSlate]
-      (x.south west) -- (y2.south east) node[midway, below=5pt, font=\scriptsize, text=AtlasInk]
-      {state $s_3=(q,o_{<3})$ \;$\to$\; action $o_3\sim\pi_\theta(\cdot\mid q,o_{<3})$};
-    \uncover<2->{
-      \draw[decorate, decoration={brace, amplitude=5pt}, thick, AtlasCool]
-        (y1.north west) -- (eos.north east) node[midway, above=6pt, font=\scriptsize, text=AtlasCool]
-        {bandit view: the whole output $o$ is \textbf{one action}, \ $\pi_\theta(o\mid q)=\prod_t\pi_\theta(o_t\mid q,o_{<t})$};}
-  \end{tikzpicture}
+% % ---------------- Setting: text generation as RL ----------------
+% \begin{frame}[label=llm-as-rl]{Text Generation as an RL Problem}
+%   \centering
+%   \begin{tikzpicture}[font=\small, >=Stealth,
+%       tok/.style={rectangle, rounded corners=2pt, draw=AtlasCool, thick, fill=AtlasCool!8,
+%         minimum width=0.85cm, minimum height=0.6cm, inner sep=1pt}]
+%     \node[rectangle, rounded corners=2pt, draw=AtlasSlate, thick, fill=AtlasSlate!10,
+%           minimum height=0.6cm, inner sep=4pt] (x) at (0,0) {question $q\sim P(Q)$};
+%     \node[tok, right=0.35cm of x] (y1) {$o_1$};
+%     \node[tok, right=0.25cm of y1] (y2) {$o_2$};
+%     \node[tok, right=0.25cm of y2] (y3) {$o_3$};
+%     \node[right=0.2cm of y3] (dots) {$\cdots$};
+%     \node[tok, right=0.2cm of dots] (eos) {\texttt{EOS}};
+%     \node[star, star points=5, fill=AtlasWarm, minimum size=0.42cm, inner sep=0pt, right=0.35cm of eos] (r) {};
+%     \node[right=0.05cm of r, font=\small, AtlasWarm] {$r(q,o)$};
+%     \draw[decorate, decoration={brace, amplitude=4pt, mirror}, thick, AtlasSlate]
+%       (x.south west) -- (y2.south east) node[midway, below=5pt, font=\scriptsize, text=AtlasInk]
+%       {state $s_3=(q,o_{<3})$ \;$\to$\; action $o_3\sim\pi_\theta(\cdot\mid q,o_{<3})$};
+%     \uncover<2->{
+%       \draw[decorate, decoration={brace, amplitude=5pt}, thick, AtlasCool]
+%         (y1.north west) -- (eos.north east) node[midway, above=6pt, font=\scriptsize, text=AtlasCool]
+%         {bandit view: the whole output $o$ is \textbf{one action}, \ $\pi_\theta(o\mid q)=\prod_t\pi_\theta(o_t\mid q,o_{<t})$};}
+%   \end{tikzpicture}
 
-  \vspace{10pt}
-  \begin{columns}[t]
-    \begin{column}{0.32\textwidth}
-      \begin{slatebox}[equal height group=llmset]
-        \small\raggedright\textbf{Start distribution}\\
-        the questions: $q\sim P(Q)$ plays the role of $\rho_0$
-      \end{slatebox}
-    \end{column}
-    \begin{column}{0.32\textwidth}
-      \begin{coolbox}[equal height group=llmset]
-        \small\raggedright\textbf{\color{AtlasCool}Dynamics}\\
-        append the token: \textbf{known} and \textbf{deterministic}
-      \end{coolbox}
-    \end{column}
-    \begin{column}{0.32\textwidth}
-      \uncover<3->{%
-      \begin{warmbox}[equal height group=llmset]
-        \small\raggedright\textbf{\color{AtlasWarm}Reward}\\
-        a learned \textbf{reward model} scores $o$ --- only at the end
-      \end{warmbox}}
-    \end{column}
-  \end{columns}
-  \note{\footnotesize Token-level MDP as in RLHF with PPO (InstructGPT, Sec.~3.5: ``a bandit environment which presents a random customer prompt and expects a response''; Ahmadian et al.\ 2024, Sec.~2.1: discount 1, reward-model score at \texttt{EOS}). Notation $q,o$ follows DeepSeekMath. The reward model is trained from comparisons (Bradley--Terry, as in InstructGPT); in DeepSeekMath its labels come from checking the final answer. Callback to lane B: known, deterministic dynamics mean that resetting to any prefix is free --- exactly what CPI's restarts $\mu$ and TRPO's vine needed.}
-\end{frame}
+%   \vspace{10pt}
+%   \begin{columns}[t]
+%     \begin{column}{0.32\textwidth}
+%       \begin{slatebox}[equal height group=llmset]
+%         \small\raggedright\textbf{Start distribution}\\
+%         the questions: $q\sim P(Q)$ plays the role of $\rho_0$
+%       \end{slatebox}
+%     \end{column}
+%     \begin{column}{0.32\textwidth}
+%       \begin{coolbox}[equal height group=llmset]
+%         \small\raggedright\textbf{\color{AtlasCool}Dynamics}\\
+%         append the token: \textbf{known} and \textbf{deterministic}
+%       \end{coolbox}
+%     \end{column}
+%     \begin{column}{0.32\textwidth}
+%       \uncover<3->{%
+%       \begin{warmbox}[equal height group=llmset]
+%         \small\raggedright\textbf{\color{AtlasWarm}Reward}\\
+%         a learned \textbf{reward model} scores $o$ --- only at the end
+%       \end{warmbox}}
+%     \end{column}
+%   \end{columns}
+%   \note{\footnotesize Token-level MDP as in RLHF with PPO (InstructGPT, Sec.~3.5: ``a bandit environment which presents a random customer prompt and expects a response''; Ahmadian et al.\ 2024, Sec.~2.1: discount 1, reward-model score at \texttt{EOS}). Notation $q,o$ follows DeepSeekMath. The reward model is trained from comparisons (Bradley--Terry, as in InstructGPT); in DeepSeekMath its labels come from checking the final answer. Callback to lane B: known, deterministic dynamics mean that resetting to any prefix is free --- exactly what CPI's restarts $\mu$ and TRPO's vine needed.}
+% \end{frame}
 
-% ---------------- GRPO: title + setting ----------------
-\begin{frame}
-  \begin{columns}[c]
-    \begin{column}{0.4\textwidth}
-      \paperpanel[\large]{DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models}
-        {Shao, Wang, Zhu, et al.\ (DeepSeek-AI)}{arXiv 2024}
-        {Introduces \textbf{GRPO}: PPO without the critic}
-    \end{column}
-    \begin{column}{0.57\textwidth}
-      {\large\bfseries\color{AtlasAccent}Setting \& Assumptions\par}
-      \vspace{6pt}
-      \small
-      \begin{itemize}
-        \item Math questions $q$ (GSM8K, MATH; chain of thought), policy: DeepSeekMath-Instruct 7B.
-        \item A \textbf{reward model} scores each output $o$ --- at the end (outcome) or per step (process).
-        \item Online: $G=64$ outputs per question from the current policy.
-        \item Problem with PPO's critic: \textbf{as large as the policy}, and hard to fit per token when the reward comes only at the end.
-      \end{itemize}
-    \end{column}
-  \end{columns}
-  \note{\footnotesize DeepSeekMath, Sec.~4.1--4.2. Most of the paper is about pre-training data (120B math tokens from Common Crawl); GRPO is Sec.~4. RL data: about 144K chain-of-thought questions from GSM8K and MATH. KL coefficient 0.04, policy learning rate $10^{-6}$, max length 1024, batch 1024. The reward model is trained on rule-based correctness labels. GRPO later became the RL algorithm of DeepSeek-R1 (2025, not covered). Sec.~4.1.1: ``the value function employed in PPO is typically another model of comparable size as the policy model''.}
-\end{frame}
+% % ---------------- GRPO: title + setting ----------------
+% \begin{frame}
+%   \begin{columns}[c]
+%     \begin{column}{0.4\textwidth}
+%       \paperpanel[\large]{DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models}
+%         {Shao, Wang, Zhu, et al.\ (DeepSeek-AI)}{arXiv 2024}
+%         {Introduces \textbf{GRPO}: PPO without the critic}
+%     \end{column}
+%     \begin{column}{0.57\textwidth}
+%       {\large\bfseries\color{AtlasAccent}Setting \& Assumptions\par}
+%       \vspace{6pt}
+%       \small
+%       \begin{itemize}
+%         \item Math questions $q$ (GSM8K, MATH; chain of thought), policy: DeepSeekMath-Instruct 7B.
+%         \item A \textbf{reward model} scores each output $o$ --- at the end (outcome) or per step (process).
+%         \item Online: $G=64$ outputs per question from the current policy.
+%         \item Problem with PPO's critic: \textbf{as large as the policy}, and hard to fit per token when the reward comes only at the end.
+%       \end{itemize}
+%     \end{column}
+%   \end{columns}
+%   \note{\footnotesize DeepSeekMath, Sec.~4.1--4.2. Most of the paper is about pre-training data (120B math tokens from Common Crawl); GRPO is Sec.~4. RL data: about 144K chain-of-thought questions from GSM8K and MATH. KL coefficient 0.04, policy learning rate $10^{-6}$, max length 1024, batch 1024. The reward model is trained on rule-based correctness labels. GRPO later became the RL algorithm of DeepSeek-R1 (2025, not covered). Sec.~4.1.1: ``the value function employed in PPO is typically another model of comparable size as the policy model''.}
+% \end{frame}
 
-% ---------------- GRPO: group-relative advantages ----------------
-\begin{frame}{Group-Relative Advantages}
-  \begin{columns}[c]
-    \begin{column}{0.5\textwidth}
-      \centering
-      \begin{tikzpicture}[x=0.75cm, y=2.2cm, >=Stealth]
-        \uncover<2->{\fill[AtlasAccent!12] (0.5,0.21) rectangle (6.5,0.79);}
-        \node[rectangle, rounded corners=2pt, draw=AtlasSlate, thick, fill=AtlasSlate!10, font=\small] (q) at (3.5,1.55) {question $q$};
-        \foreach \i/\r in {1/0.90, 2/0.20, 3/0.70, 4/0.50, 5/0.10, 6/0.60} {
-          \draw[->, gray] (q.south) -- (\i,1.1);
-          \node[font=\scriptsize] at (\i,1.02) {$o_\i$};
-          \ifdim\r pt>0.5pt
-            \fill[AtlasCool!70] (\i-0.28,0) rectangle (\i+0.28,\r);
-          \else
-            \fill[AtlasWarm!70] (\i-0.28,0) rectangle (\i+0.28,\r);
-          \fi
-          \node[font=\tiny, below] at (\i,0) {$r_\i$};}
-        \draw[gray] (0.4,0) -- (6.6,0);
-        \draw[AtlasAccent, very thick, dashed] (0.5,0.5) -- (6.5,0.5) node[right, font=\scriptsize]{mean};
-        \uncover<2->{\node[right, font=\scriptsize, AtlasAccent] at (6.5,0.79) {$\pm$ std};}
-      \end{tikzpicture}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \small
-      Sample $G$ outputs for the \textbf{same} question; score them.
-      \uncover<2->{%
-      \begin{formulabox}
-        \begin{gather*}
-          \hat A_{i,t} = \frac{r_i - \mathrm{mean}(\mathbf r)}{\mathrm{std}(\mathbf r)}
-        \end{gather*}
-      \end{formulabox}
-      {\footnotesize the same value for every token $t$ of $o_i$\par}}
-      \uncover<3->{%
-        \begin{itemize}
-          \item The group mean replaces $V(q)$: a critic computed \textbf{on the fly}.
-          \item Matches how RMs are trained: \textbf{comparisons} within one question.
-        \end{itemize}}
-    \end{column}
-  \end{columns}
-  \vspace{4pt}
-  \uncover<4->{%
-  \begin{goodbox}
-    \small RL on GSM8K + MATH questions only: GSM8K $82.9\to88.2\%$, MATH $46.8\to51.7\%$, and gains out of domain.
-  \end{goodbox}}
-  \note{\footnotesize DeepSeekMath, Sec.~4.1.2 (outcome supervision), Table~5. Process supervision (Sec.~4.1.3): normalize the per-step rewards across the group, and give token $t$ the sum of normalized rewards of the steps that end at or after $t$; it did better than outcome supervision (Fig.~5). Out of domain, e.g.\ CMATH $84.6\to88.8\%$. Sec.~5.2.2: RL improves Maj@K but not Pass@K --- it makes the output distribution more robust rather than adding new abilities. Figure: toy rewards, cool $=$ above the mean (pushed up), warm $=$ below (pushed down).}
-\end{frame}
+% % ---------------- GRPO: group-relative advantages ----------------
+% \begin{frame}{Group-Relative Advantages}
+%   \begin{columns}[c]
+%     \begin{column}{0.5\textwidth}
+%       \centering
+%       \begin{tikzpicture}[x=0.75cm, y=2.2cm, >=Stealth]
+%         \uncover<2->{\fill[AtlasAccent!12] (0.5,0.21) rectangle (6.5,0.79);}
+%         \node[rectangle, rounded corners=2pt, draw=AtlasSlate, thick, fill=AtlasSlate!10, font=\small] (q) at (3.5,1.55) {question $q$};
+%         \foreach \i/\r in {1/0.90, 2/0.20, 3/0.70, 4/0.50, 5/0.10, 6/0.60} {
+%           \draw[->, gray] (q.south) -- (\i,1.1);
+%           \node[font=\scriptsize] at (\i,1.02) {$o_\i$};
+%           \ifdim\r pt>0.5pt
+%             \fill[AtlasCool!70] (\i-0.28,0) rectangle (\i+0.28,\r);
+%           \else
+%             \fill[AtlasWarm!70] (\i-0.28,0) rectangle (\i+0.28,\r);
+%           \fi
+%           \node[font=\tiny, below] at (\i,0) {$r_\i$};}
+%         \draw[gray] (0.4,0) -- (6.6,0);
+%         \draw[AtlasAccent, very thick, dashed] (0.5,0.5) -- (6.5,0.5) node[right, font=\scriptsize]{mean};
+%         \uncover<2->{\node[right, font=\scriptsize, AtlasAccent] at (6.5,0.79) {$\pm$ std};}
+%       \end{tikzpicture}
+%     \end{column}
+%     \begin{column}{0.48\textwidth}
+%       \small
+%       Sample $G$ outputs for the \textbf{same} question; score them.
+%       \uncover<2->{%
+%       \begin{formulabox}
+%         \begin{gather*}
+%           \hat A_{i,t} = \frac{r_i - \mathrm{mean}(\mathbf r)}{\mathrm{std}(\mathbf r)}
+%         \end{gather*}
+%       \end{formulabox}
+%       {\footnotesize the same value for every token $t$ of $o_i$\par}}
+%       \uncover<3->{%
+%         \begin{itemize}
+%           \item The group mean replaces $V(q)$: a critic computed \textbf{on the fly}.
+%           \item Matches how RMs are trained: \textbf{comparisons} within one question.
+%         \end{itemize}}
+%     \end{column}
+%   \end{columns}
+%   \vspace{4pt}
+%   \uncover<4->{%
+%   \begin{goodbox}
+%     \small RL on GSM8K + MATH questions only: GSM8K $82.9\to88.2\%$, MATH $46.8\to51.7\%$, and gains out of domain.
+%   \end{goodbox}}
+%   \note{\footnotesize DeepSeekMath, Sec.~4.1.2 (outcome supervision), Table~5. Process supervision (Sec.~4.1.3): normalize the per-step rewards across the group, and give token $t$ the sum of normalized rewards of the steps that end at or after $t$; it did better than outcome supervision (Fig.~5). Out of domain, e.g.\ CMATH $84.6\to88.8\%$. Sec.~5.2.2: RL improves Maj@K but not Pass@K --- it makes the output distribution more robust rather than adding new abilities. Figure: toy rewards, cool $=$ above the mean (pushed up), warm $=$ below (pushed down).}
+% \end{frame}
 
-% ---------------- GRPO: PPO vs GRPO ----------------
-\begin{frame}{PPO vs.\ GRPO}
-  \centering
-  \begin{tikzpicture}[font=\scriptsize, >=Stealth,
-      b/.style={rectangle, rounded corners=2pt, thick,
-        minimum height=0.62cm, align=center, inner sep=3pt}]
-    % PPO row
-    \node[font=\small\bfseries, anchor=east] at (-0.3,0) {PPO};
-    \node[b, cbox=AtlasSlate] (q1) at (0.3,0) {$q$};
-    \node[b, cbox=AtlasCool] (p1) at (1.8,0) {policy};
-    \node[b, cbox=AtlasSlate] (o1) at (3.4,0) {$o$};
-    \node[b, cbox=AtlasWarm] (r1) at (5.7,0.75) {reward model};
-    \node[b, cbox=AtlasSlate] (f1) at (5.7,0) {reference};
-    \node[b, cbox=AtlasWarm, line width=1.4pt] (v1) at (5.7,-0.75) {\textbf{value model}};
-    \node[b, cbox=AtlasSlate] (g1) at (8.4,0) {GAE};
-    \node[b, cbox=AtlasCool] (a1) at (10.2,0) {$A_t$ per token};
-    \draw[->] (q1) -- (p1); \draw[->] (p1) -- (o1);
-    \foreach \n in {r1,f1,v1} {\draw[->] (o1.east) -- (\n.west); \draw[->] (\n.east) -- (g1.west);}
-    \draw[->] (g1) -- (a1);
-    % GRPO row
-    \uncover<2->{
-    \node[font=\small\bfseries, anchor=east] at (-0.3,-2.2) {GRPO};
-    \node[b, cbox=AtlasSlate] (q2) at (0.3,-2.2) {$q$};
-    \node[b, cbox=AtlasCool] (p2) at (1.8,-2.2) {policy};
-    \node[b, cbox=AtlasSlate] (o2) at (3.4,-2.2) {$o_1,\dots,o_G$};
-    \node[b, cbox=AtlasWarm] (r2) at (5.7,-2.2) {reward model};
-    \node[b, cbox=AtlasSlate] (g2) at (8.4,-2.2) {group\\ mean, std};
-    \node[b, cbox=AtlasCool] (a2) at (10.2,-2.2) {$A_1,\dots,A_G$};
-    \node[b, cbox=AtlasSlate] (f2) at (5.7,-3.0) {reference};
-    \draw[->] (q2) -- (p2); \draw[->] (p2) -- (o2); \draw[->] (o2) -- (r2);
-    \draw[->] (r2) -- node[below]{$r_1..r_G$} (g2); \draw[->] (g2) -- (a2);
-    \draw[->, dashed, AtlasSlate] (f2.east) -- (9.3,-3.0) node[right, align=left]{KL goes into\\ the \textbf{loss}};}
-  \end{tikzpicture}
+% % ---------------- GRPO: PPO vs GRPO ----------------
+% \begin{frame}{PPO vs.\ GRPO}
+%   \centering
+%   \begin{tikzpicture}[font=\scriptsize, >=Stealth,
+%       b/.style={rectangle, rounded corners=2pt, thick,
+%         minimum height=0.62cm, align=center, inner sep=3pt}]
+%     % PPO row
+%     \node[font=\small\bfseries, anchor=east] at (-0.3,0) {PPO};
+%     \node[b, cbox=AtlasSlate] (q1) at (0.3,0) {$q$};
+%     \node[b, cbox=AtlasCool] (p1) at (1.8,0) {policy};
+%     \node[b, cbox=AtlasSlate] (o1) at (3.4,0) {$o$};
+%     \node[b, cbox=AtlasWarm] (r1) at (5.7,0.75) {reward model};
+%     \node[b, cbox=AtlasSlate] (f1) at (5.7,0) {reference};
+%     \node[b, cbox=AtlasWarm, line width=1.4pt] (v1) at (5.7,-0.75) {\textbf{value model}};
+%     \node[b, cbox=AtlasSlate] (g1) at (8.4,0) {GAE};
+%     \node[b, cbox=AtlasCool] (a1) at (10.2,0) {$A_t$ per token};
+%     \draw[->] (q1) -- (p1); \draw[->] (p1) -- (o1);
+%     \foreach \n in {r1,f1,v1} {\draw[->] (o1.east) -- (\n.west); \draw[->] (\n.east) -- (g1.west);}
+%     \draw[->] (g1) -- (a1);
+%     % GRPO row
+%     \uncover<2->{
+%     \node[font=\small\bfseries, anchor=east] at (-0.3,-2.2) {GRPO};
+%     \node[b, cbox=AtlasSlate] (q2) at (0.3,-2.2) {$q$};
+%     \node[b, cbox=AtlasCool] (p2) at (1.8,-2.2) {policy};
+%     \node[b, cbox=AtlasSlate] (o2) at (3.4,-2.2) {$o_1,\dots,o_G$};
+%     \node[b, cbox=AtlasWarm] (r2) at (5.7,-2.2) {reward model};
+%     \node[b, cbox=AtlasSlate] (g2) at (8.4,-2.2) {group\\ mean, std};
+%     \node[b, cbox=AtlasCool] (a2) at (10.2,-2.2) {$A_1,\dots,A_G$};
+%     \node[b, cbox=AtlasSlate] (f2) at (5.7,-3.0) {reference};
+%     \draw[->] (q2) -- (p2); \draw[->] (p2) -- (o2); \draw[->] (o2) -- (r2);
+%     \draw[->] (r2) -- node[below]{$r_1..r_G$} (g2); \draw[->] (g2) -- (a2);
+%     \draw[->, dashed, AtlasSlate] (f2.east) -- (9.3,-3.0) node[right, align=left]{KL goes into\\ the \textbf{loss}};}
+%   \end{tikzpicture}
 
-  \vspace{6pt}
-  \uncover<3->{%
-  \begin{formulabox}
-    \small
-    \begin{gather*}
-      \mathcal J_{\mathrm{GRPO}}(\theta) = \E\Big[\frac1G\sum_{i=1}^G\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}
-        \Big\{\min\big(\rho_{i,t}\hat A_{i,t},\ \mathrm{clip}(\rho_{i,t},1\pm\varepsilon)\,\hat A_{i,t}\big)
-        - \beta\,\DKL\big[\pi_\theta\|\pi_{\mathrm{ref}}\big]\Big\}\Big]
-    \end{gather*}
-  \end{formulabox}
-  {\scriptsize $\rho_{i,t}=\pi_\theta(o_{i,t}|q,o_{i,<t})/\pi_{\told}(o_{i,t}|q,o_{i,<t})$: still PPO's clipped ratio, per token.\par}}
-  \note{\footnotesize DeepSeekMath, Sec.~4.1.1, Fig.~4 (redrawn), Eqs.~1--4. PPO for LLMs adds the per-token KL to the reward ($r_t = r_\varphi - \beta\log\pi_\theta/\pi_{\mathrm{ref}}$, following InstructGPT), so the KL passes through GAE; GRPO puts it in the loss instead, which keeps $\hat A$ simple. $\pi_{\mathrm{ref}}$ is usually the initial SFT model. KL estimator (Schulman 2020, ``k3''): $\frac{\pi_{\mathrm{ref}}}{\pi_\theta}-\log\frac{\pi_{\mathrm{ref}}}{\pi_\theta}-1\ge0$, unbiased for $\DKL(\pi_\theta\|\pi_{\mathrm{ref}})$ under samples from $\pi_\theta$. Iterative GRPO (Alg.~1) also retrains the reward model and resets $\pi_{\mathrm{ref}}\leftarrow\pi_\theta$ between rounds.}
-\end{frame}
+%   \vspace{6pt}
+%   \uncover<3->{%
+%   \begin{formulabox}
+%     \small
+%     \begin{gather*}
+%       \mathcal J_{\mathrm{GRPO}}(\theta) = \E\Big[\frac1G\sum_{i=1}^G\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}
+%         \Big\{\min\big(\rho_{i,t}\hat A_{i,t},\ \mathrm{clip}(\rho_{i,t},1\pm\varepsilon)\,\hat A_{i,t}\big)
+%         - \beta\,\DKL\big[\pi_\theta\|\pi_{\mathrm{ref}}\big]\Big\}\Big]
+%     \end{gather*}
+%   \end{formulabox}
+%   {\scriptsize $\rho_{i,t}=\pi_\theta(o_{i,t}|q,o_{i,<t})/\pi_{\told}(o_{i,t}|q,o_{i,<t})$: still PPO's clipped ratio, per token.\par}}
+%   \note{\footnotesize DeepSeekMath, Sec.~4.1.1, Fig.~4 (redrawn), Eqs.~1--4. PPO for LLMs adds the per-token KL to the reward ($r_t = r_\varphi - \beta\log\pi_\theta/\pi_{\mathrm{ref}}$, following InstructGPT), so the KL passes through GAE; GRPO puts it in the loss instead, which keeps $\hat A$ simple. $\pi_{\mathrm{ref}}$ is usually the initial SFT model. KL estimator (Schulman 2020, ``k3''): $\frac{\pi_{\mathrm{ref}}}{\pi_\theta}-\log\frac{\pi_{\mathrm{ref}}}{\pi_\theta}-1\ge0$, unbiased for $\DKL(\pi_\theta\|\pi_{\mathrm{ref}})$ under samples from $\pi_\theta$. Iterative GRPO (Alg.~1) also retrains the reward model and resets $\pi_{\mathrm{ref}}\leftarrow\pi_\theta$ between rounds.}
+% \end{frame}
 
-% ---------------- GRPO through the lens of the talk ----------------
-\begin{frame}[label=grpo-lens]{GRPO Through the Lens of This Talk}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \begin{warmbox}[equal height group=grpolens1]
-        \small\raggedright\textbf{\color{AtlasWarm}Variance: full circle}\\[2pt]
-        GAE learned a critic because Monte Carlo returns were too noisy.
-        GRPO goes \textbf{back to Monte Carlo}: $G$ answers per question make a baseline cheap.
-      \end{warmbox}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \uncover<2->{%
-      \begin{coolbox}[equal height group=grpolens1]
-        \small\raggedright\textbf{\color{AtlasCool}Two different ``stay close''}\\[2pt]
-        clip: near $\pi_{\told}$, so the surrogate stays accurate (as in PPO).\\
-        $\beta\,\DKL$: near $\pi_{\mathrm{ref}}$, where the \textbf{reward model} is trusted.
-      \end{coolbox}}
-    \end{column}
-  \end{columns}
-  \vspace{6pt}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \uncover<3->{%
-      \begin{slatebox}[equal height group=grpolens2]
-        \small\raggedright\textbf{Does the clip ever act?}\\[2pt]
-        Their runs: \textbf{one} update per batch $\Rightarrow$ $\pi_\theta=\pi_{\told}$ when the gradient is taken, $\rho_{i,t}=1$.\\
-        The clip is idle: REINFORCE + group baseline + KL.
-      \end{slatebox}}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \uncover<4->{%
-      \begin{slatebox}[equal height group=grpolens2]
-        \small\raggedright\textbf{RLOO} {\scriptsize(Ahmadian et al.\ 2024)}\\[2pt]
-        baseline $b_i$ = mean of the \textbf{other} $G-1$ rewards:
-        $r_i-\bar r=\tfrac{G-1}{G}(r_i-b_i)$, the same up to scale.
-        Real differences: GRPO's $\mathrm{std}$ and $1/|o_i|$.
-      \end{slatebox}}
-    \end{column}
-  \end{columns}
-  \vspace{4pt}
-  \uncover<5->{{\centering\footnotesize\textbf{Why the critic could go:} samples per question are cheap, and the question is the only real state.\par}}
-  \note{\footnotesize Our synthesis. Box 1: GAE Sec.~1 (variance of Monte Carlo returns) vs.\ DeepSeekMath Sec.~4.1.1 (``uses the average reward of multiple sampled outputs, produced in response to the same question, as the baseline''). Box 2: DeepSeekMath Sec.~4.1.1 adds the KL ``to mitigate over-optimization of the reward model''. Box 3: Sec.~4.2: ``The policy model only has a single update following each exploration stage.'' With $\mu=1$ GRPO iterations, the clip cannot bind; with $\mu>1$ it acts as in PPO. RLOO's paper also reports clipping active on $<5\%$ of each batch in PPO for RLHF (Sec.~3.2). Box 4: RLOO, Sec.~2.3, Eq.~10 (estimator from Kool et al.\ 2019); the algebra $r_i-\frac1G\sum_j r_j=\frac{G-1}{G}\big(r_i-\frac{1}{G-1}\sum_{j\ne i}r_j\big)$ is ours. Dividing by the group std and by $|o_i|$ reweights questions (easy/hard) and answers (short/long); later analyses point at these two terms (Liu et al.\ 2025, ``Understanding R1-Zero-Like Training'', a.k.a.\ Dr.\ GRPO).}
-\end{frame}
+% % ---------------- GRPO through the lens of the talk ----------------
+% \begin{frame}[label=grpo-lens]{GRPO Through the Lens of This Talk}
+%   \begin{columns}[T]
+%     \begin{column}{0.48\textwidth}
+%       \begin{warmbox}[equal height group=grpolens1]
+%         \small\raggedright\textbf{\color{AtlasWarm}Variance: full circle}\\[2pt]
+%         GAE learned a critic because Monte Carlo returns were too noisy.
+%         GRPO goes \textbf{back to Monte Carlo}: $G$ answers per question make a baseline cheap.
+%       \end{warmbox}
+%     \end{column}
+%     \begin{column}{0.48\textwidth}
+%       \uncover<2->{%
+%       \begin{coolbox}[equal height group=grpolens1]
+%         \small\raggedright\textbf{\color{AtlasCool}Two different ``stay close''}\\[2pt]
+%         clip: near $\pi_{\told}$, so the surrogate stays accurate (as in PPO).\\
+%         $\beta\,\DKL$: near $\pi_{\mathrm{ref}}$, where the \textbf{reward model} is trusted.
+%       \end{coolbox}}
+%     \end{column}
+%   \end{columns}
+%   \vspace{6pt}
+%   \begin{columns}[T]
+%     \begin{column}{0.48\textwidth}
+%       \uncover<3->{%
+%       \begin{slatebox}[equal height group=grpolens2]
+%         \small\raggedright\textbf{Does the clip ever act?}\\[2pt]
+%         Their runs: \textbf{one} update per batch $\Rightarrow$ $\pi_\theta=\pi_{\told}$ when the gradient is taken, $\rho_{i,t}=1$.\\
+%         The clip is idle: REINFORCE + group baseline + KL.
+%       \end{slatebox}}
+%     \end{column}
+%     \begin{column}{0.48\textwidth}
+%       \uncover<4->{%
+%       \begin{slatebox}[equal height group=grpolens2]
+%         \small\raggedright\textbf{RLOO} {\scriptsize(Ahmadian et al.\ 2024)}\\[2pt]
+%         baseline $b_i$ = mean of the \textbf{other} $G-1$ rewards:
+%         $r_i-\bar r=\tfrac{G-1}{G}(r_i-b_i)$, the same up to scale.
+%         Real differences: GRPO's $\mathrm{std}$ and $1/|o_i|$.
+%       \end{slatebox}}
+%     \end{column}
+%   \end{columns}
+%   \vspace{4pt}
+%   \uncover<5->{{\centering\footnotesize\textbf{Why the critic could go:} samples per question are cheap, and the question is the only real state.\par}}
+%   \note{\footnotesize Our synthesis. Box 1: GAE Sec.~1 (variance of Monte Carlo returns) vs.\ DeepSeekMath Sec.~4.1.1 (``uses the average reward of multiple sampled outputs, produced in response to the same question, as the baseline''). Box 2: DeepSeekMath Sec.~4.1.1 adds the KL ``to mitigate over-optimization of the reward model''. Box 3: Sec.~4.2: ``The policy model only has a single update following each exploration stage.'' With $\mu=1$ GRPO iterations, the clip cannot bind; with $\mu>1$ it acts as in PPO. RLOO's paper also reports clipping active on $<5\%$ of each batch in PPO for RLHF (Sec.~3.2). Box 4: RLOO, Sec.~2.3, Eq.~10 (estimator from Kool et al.\ 2019); the algebra $r_i-\frac1G\sum_j r_j=\frac{G-1}{G}\big(r_i-\frac{1}{G-1}\sum_{j\ne i}r_j\big)$ is ours. Dividing by the group std and by $|o_i|$ reweights questions (easy/hard) and answers (short/long); later analyses point at these two terms (Liu et al.\ 2025, ``Understanding R1-Zero-Like Training'', a.k.a.\ Dr.\ GRPO).}
+% \end{frame}
 
 \begin{frame}{Congratualations ...}
 
@@ -3973,29 +4088,30 @@
 \end{frame}
 
 % ---------------- Connections ----------------
-\begin{frame}[label=trpo-connections]{One Problem, Several Known Algorithms}
-  \begin{center}
-  \renewcommand{\arraystretch}{1.3}
-  \begin{tabular}{l l l}
-    \toprule
-    \textbf{Objective} & \textbf{Constraint / penalty} & \textbf{Algorithm} \\
-    \midrule
-    Linear in $\theta$ & $\tfrac12\|\theta-\told\|^2 \le \delta$ & Vanilla policy gradient \\
-    Linear in $\theta$ & Quadratic KL, fixed step $\tfrac{1}{\lambda}$ & Natural policy gradient \\
-    Full $L_{\piold}(\pi)$ & none & Policy iteration \\
-    $L_{\told}(\theta)$ & $\bar D_{\mathrm{KL}} \le \delta$, enforced & \textbf{TRPO} \\
-    \bottomrule
-  \end{tabular}
-  \end{center}
-  \vspace{6pt}
-  \begin{itemize}
-    \item NPG vs.\ TRPO: same direction $A^{-1}g$; TRPO \textbf{enforces} the KL constraint each step --- matters on larger problems.
-    \item Related: REPS constrains the joint $p(s,a)$; TRPO constrains only $\pi(a\mid s)$.
-  \end{itemize}
-  \vfill
-  \hfill \hyperlink{trpo-recap}{\beamerreturnbutton{Back}}
-  \note{\footnotesize TRPO, Sec.~7.}
-\end{frame}
+% Superseded by the main-flow frame trpo-prior (before trpo-recap).
+% \begin{frame}[label=trpo-connections]{One Problem, Several Known Algorithms}
+%   \begin{center}
+%   \renewcommand{\arraystretch}{1.3}
+%   \begin{tabular}{l l l}
+%     \toprule
+%     \textbf{Objective} & \textbf{Constraint / penalty} & \textbf{Algorithm} \\
+%     \midrule
+%     Linear in $\theta$ & $\tfrac12\|\theta-\told\|^2 \le \delta$ & Vanilla policy gradient \\
+%     Linear in $\theta$ & Quadratic KL, fixed step $\tfrac{1}{\lambda}$ & Natural policy gradient \\
+%     Full $L_{\piold}(\pi)$ & none & Policy iteration \\
+%     $L_{\told}(\theta)$ & $\bar D_{\mathrm{KL}} \le \delta$, enforced & \textbf{TRPO} \\
+%     \bottomrule
+%   \end{tabular}
+%   \end{center}
+%   \vspace{6pt}
+%   \begin{itemize}
+%     \item NPG vs.\ TRPO: same direction $A^{-1}g$; TRPO \textbf{enforces} the KL constraint each step --- matters on larger problems.
+%     \item Related: REPS constrains the joint $p(s,a)$; TRPO constrains only $\pi(a\mid s)$.
+%   \end{itemize}
+%   \vfill
+%   \hfill \hyperlink{trpo-recap}{\beamerreturnbutton{Back}}
+%   \note{\footnotesize TRPO, Sec.~7.}
+% \end{frame}
 
 % ---------------- Appendix: Tool - Importance Sampling ----------------
 \begin{frame}[label=is-trpo]{Tool: Importance Sampling}
@@ -4208,6 +4324,60 @@
   \hyperlink{sampling-main}{\beamerreturnbutton{Back to main}}
 
   \note{\footnotesize The $V$ term is constant with respect to the optimization variable $\theta$, so it doesn't affect which $\theta$ maximizes the objective.}
+\end{frame}
+
+% ---------------- Appendix: Common random numbers (vine) ----------------
+\begin{frame}[label=crn]{Common Random Numbers: Same Noise, Same Role}
+  \begin{columns}[T]
+    \begin{column}{0.6\textwidth}
+      \centering\vspace*{4pt}\small
+      \eqstep{1}{\text{Only \textbf{differences} of $\hat Q$ at the same $s_n$ matter}\\
+        \textstyle\sum_a \nabla\pi_\theta(a\mid s_n) = 0 \;\Rightarrow\; \hat Q_k + c \text{ gives the same gradient}}
+      \eqsep{2}
+      \eqstep{2}{\text{The variance of a difference}\\
+        \mathrm{Var}(\hat Q_1-\hat Q_2)=\mathrm{Var}\,\hat Q_1+\mathrm{Var}\,\hat Q_2-2\,\mathrm{Cov}}
+      \eqsep{3}
+      \eqstep{3}{\text{CRN: draw } \varepsilon_{1:T} \text{ once, reuse it in every branch}\\
+        a_t=\mu_\theta(s_t)+\sigma\varepsilon_t,\qquad \hat Q_k = R(a_k,\varepsilon_{1:T})\\
+        R \text{ smooth in } a:\ \ \hat Q_1-\hat Q_2 \approx \partial_a R\,(a_1-a_2)}
+    \end{column}
+    \begin{column}{0.02\textwidth}
+      {\color{AtlasSlate!40}\vrule width 0.6pt height 0.6\textheight}
+    \end{column}
+    \begin{column}{0.38\textwidth}
+      \centering
+      \begin{tikzpicture}[x=0.62cm, y=0.5cm, font=\tiny]
+        \path (-0.6,-6.6) rectangle (5.2,1.6);
+        \uncover<2->{%
+          \node[anchor=west, font=\scriptsize\bfseries, text=AtlasSlate] at (-0.5,1.4) {independent noise};
+          \draw[AtlasWarm, thick] plot coordinates {(0.00,0.00) (0.25,0.04) (0.50,0.22) (0.75,0.13) (1.00,0.28) (1.25,0.27) (1.50,0.27) (1.75,0.54) (2.00,0.58) (2.25,0.60) (2.50,0.72) (2.75,0.89) (3.00,0.91) (3.25,1.02) (3.50,0.91) (3.75,0.89) (4.00,0.86)};
+          \draw[AtlasCool, thick] plot coordinates {(0.00,0.00) (0.25,-0.20) (0.50,-0.42) (0.75,-0.66) (1.00,-0.71) (1.25,-0.76) (1.50,-0.83) (1.75,-0.84) (2.00,-1.04) (2.25,-1.08) (2.50,-1.07) (2.75,-1.00) (3.00,-1.13) (3.25,-1.21) (3.50,-1.50) (3.75,-1.59) (4.00,-1.90)};
+          \fill[AtlasInk] (0,0) circle (2pt) node[left]{$s_n$};
+          \node[text=AtlasWarm, right] at (4,0.86) {$a_1$};
+          \node[text=AtlasCool, right] at (4,-1.90) {$a_2$};
+          \node[text=NoteGray, anchor=north] at (2,-2.1) {gap = action effect + \textbf{luck}};}
+        \uncover<3->{%
+          \begin{scope}[yshift=-2.6cm]
+          \node[anchor=west, font=\scriptsize\bfseries, text=AtlasSlate] at (-0.5,1.4) {CRN (same $\varepsilon$)};
+          \draw[AtlasWarm, thick] plot coordinates {(0.00,0.00) (0.25,0.04) (0.50,0.22) (0.75,0.13) (1.00,0.28) (1.25,0.27) (1.50,0.27) (1.75,0.54) (2.00,0.58) (2.25,0.60) (2.50,0.72) (2.75,0.89) (3.00,0.91) (3.25,1.02) (3.50,0.91) (3.75,0.89) (4.00,0.86)};
+          \draw[AtlasCool, thick] plot coordinates {(0.00,0.00) (0.25,-0.01) (0.50,0.12) (0.75,-0.02) (1.00,0.08) (1.25,0.02) (1.50,-0.03) (1.75,0.19) (2.00,0.18) (2.25,0.15) (2.50,0.22) (2.75,0.34) (3.00,0.31) (3.25,0.37) (3.50,0.21) (3.75,0.14) (4.00,0.06)};
+          \fill[AtlasInk] (0,0) circle (2pt) node[left]{$s_n$};
+          \node[text=AtlasWarm, right] at (4,0.86) {$a_1$};
+          \node[text=AtlasCool, right] at (4,0.06) {$a_2$};
+          \node[text=NoteGray, anchor=north] at (2,-0.6) {same wiggles $\Rightarrow$ gap = \textbf{action}};
+          \end{scope}}
+      \end{tikzpicture}
+    \end{column}
+  \end{columns}
+  \simpfooter{One rollout gives a very noisy $\hat Q(s_n,a_k)$.}
+    {Same $\varepsilon_t$ in the same role $\Rightarrow$ $\mathrm{Cov}>0$: the luck cancels in the difference.}
+    {Control of the simulator's RNG. Fades when branches diverge (chaos, long rollouts, discrete actions). \hfill\hyperlink{sp-vine}{\beamerreturnbutton{Back}}}
+
+  \note{\footnotesize TRPO, Sec.~5.2: ``We can greatly reduce the variance of the $Q$-value differences between rollouts by using the same random number sequence for the noise in each of the $K$ rollouts, i.e., common random numbers'' (refs: Bertsekas 2005; Ng \& Jordan 2000). The paper gives no conditions; the explanation here is ours.
+    \textbf{Step 1:} the self-normalized estimator ``removes the need to use a baseline'' because a constant shift of all $\hat Q$'s does not change the gradient; only same-state differences enter. This is also the first source of vine's lower variance: $K$ actions at the same $s_n$ can be compared directly (single path has one action per state).
+    \textbf{Why the same numbers are not enough:} CRN only helps if each random number plays the same role in every branch and the branches stay close. MuJoCo physics is deterministic, so in locomotion the noise is the policy's Gaussian $\varepsilon_t$; with nearby first actions (sampled from $\pi_{\told}$), smooth dynamics and short rollouts, the branches stay close and $R$ is smooth in $a$, so the noise cancels to first order.
+    \textbf{When it fails:} a small difference grows fast (chaotic dynamics, long horizon); a different discrete action gives a qualitatively different future (Atari); branches that call the RNG a different number of times (e.g.\ early termination) fall out of step.
+    Figure: illustrative random walks; in the CRN panel both branches use the same increments, so only the drift (the action effect) separates them.}
 \end{frame}
 
 \end{document}
